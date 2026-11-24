@@ -27,6 +27,8 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -52,13 +54,9 @@ jobs:
           HISTORY_FROM: ${{ vars.D1_DATABASE && vars.HISTORY_FROM || '' }}
         run: node scripts/update.mjs
 
-      # ---- Platená verzia: zapne sa sama, keď v Settings → Variables nastavíš D1_DATABASE
-      #      a v Settings → Secrets pridáš CLOUDFLARE_API_TOKEN a CLOUDFLARE_ACCOUNT_ID ----
+      # ---- Platená verzia: zapne sa sama, keď v Settings → Variables nastavíš D1_DATABASE ----
       - name: Import do D1 (len platená verzia)
         if: ${{ vars.D1_DATABASE != '' }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           node scripts/to-sql.mjs data sql
           for f in sql/*.sql; do npx -y wrangler@4 d1 execute "${{ vars.D1_DATABASE }}" --remote --yes --file="$f"; done
@@ -76,3 +74,11 @@ jobs:
           git commit -q -m "Dáta CRZ $(date -u +%F)"
           git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data:data
           echo "Hotovo: $(du -sh . | cut -f1)"
+
+      - name: Nasadiť na Cloudflare (stránka + dáta ako statické súbory)
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::warning::Chýba secret CLOUDFLARE_API_TOKEN – nasadenie preskočené, stránka beží zo zálohy cez GitHub."; exit 0; fi
+          rm -rf data/.git
+          bash scripts/build-site.sh
+          npx -y wrangler@4 deploy

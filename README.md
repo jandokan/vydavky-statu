@@ -16,13 +16,19 @@ scripts/update.mjs  → stiahne nové dni, rozparsuje XML, geokóduje podľa PS�
         ▼  force-push
 vetva "data"  (api/*.json + state/)
         │
-        ▼  Cloudflare Worker "vydavky-statu"  (worker/index.js)
-číta public/index.html z vetvy main a dáta z vetvy data, cachuje ich na okraji Cloudflare
+        ▼  wrangler deploy (v tom istom workflow)
+Cloudflare: statické súbory (public/ + api/) – zadarmo, bez limitu požiadaviek
+            + Worker (worker/index.js) len pre /api/search, /api/zmluva/*, /api/plan
 ```
 
-- **Zmena vzhľadu/funkcií mapy** = úprava `public/index.html` a push do `main`. Worker si novú verziu načíta sám do 2 minút, nič sa nenasadzuje.
-- **Zmena Workera** (`worker/index.js`) sa nasadzuje cez Cloudflare (`npx wrangler deploy`), ale bežne netreba.
+- **Zmena vzhľadu/funkcií mapy** = úprava `public/index.html` a push do `main` → workflow „Nasadenie na Cloudflare“ ju nasadí s aktuálnymi dátami (cca 1 minúta).
 - **Ručné spustenie** sťahovania: GitHub → Actions → „Denná aktualizácia CRZ“ → Run workflow.
+- **Záloha:** kým nie je nastavený secret `CLOUDFLARE_API_TOKEN`, Worker číta stránku aj dáta priamo z GitHubu (limit 100 000 požiadaviek denne).
+
+### Jednorazové nastavenie nasadenia
+1. Cloudflare → My Profile → API Tokens → Create Token → šablóna **Edit Cloudflare Workers** → pridať riadok *Account · D1 · Edit* → účet *Janko.koterba* → Create.
+2. GitHub repo → Settings → Secrets and variables → Actions → New repository secret: `CLOUDFLARE_API_TOKEN` = token.
+3. Actions → „Nasadenie na Cloudflare“ → Run workflow.
 
 ### Limity Free verzie
 | Čo | Limit | Prečo |
@@ -31,7 +37,8 @@ vetva "data"  (api/*.json + state/)
 | Zmlúv na jedno miesto | 1 500 najväčších (`PLACE_CAP`) | veľkosť súboru pre mobil |
 | Denné súčty (graf) | rastú natrvalo | ukladajú sa v `state/daily.json` |
 | Vyhľadávanie | len medzi najväčšími subjektmi v okne | bez databázy |
-| Cloudflare Workers Free | 100 000 požiadaviek/deň | dáta sú cachované |
+| Návštevnosť | bez limitu | statické súbory sú na Cloudflare zadarmo a neobmedzené |
+| Počet súborov | 20 000 (Free), 100 000 (Paid) | teraz cca 3 500 |
 
 ## Dáta
 
@@ -54,11 +61,11 @@ Kód je pripravený, stačí zapnúť:
 
 1. Cloudflare → Workers & Pages → **Plans** → Workers Paid.
 2. Vytvor D1 databázu `vydavky-statu` (dashboard → D1 → Create) a spusti v jej konzole obsah `upgrade/schema.sql`.
-3. Worker `vydavky-statu` → Settings → Bindings → **D1 database**, názov premennej `DB`. Worker tým sám zapne `/api/search` a `/api/zmluva/:id`.
-4. Vytvor API token (My Profile → API Tokens → šablóna „Edit Cloudflare Workers“ + oprávnenie D1 Edit).
-5. GitHub repo → Settings → Secrets and variables → Actions:
-   - Secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-   - Variables: `D1_DATABASE` = `vydavky-statu`, `HISTORY_FROM` = `2011-01-01`, voliteľne `WINDOW_DAYS` = `180`
+3. (Väzba `DB` sa nastaví cez `wrangler.jsonc`, krok 4.) Worker tým sám zapne `/api/search` a `/api/zmluva/:id`.
+4. V `wrangler.jsonc` odkomentuj `d1_databases` a doplň ID databázy (inak by ďalšie nasadenie väzbu DB zmazalo).
+5. GitHub repo → Settings → Secrets and variables → Actions → Variables:
+   `D1_DATABASE` = `vydavky-statu`, `HISTORY_FROM` = `2011-01-01`, voliteľne `WINDOW_DAYS` = `180`
+   (token `CLOUDFLARE_API_TOKEN` už máš z nastavenia nasadenia, s oprávnením D1 Edit)
 6. Hotovo. Každý beh potom importuje zmeny do D1 a po 100 dňoch dosťahuje celú históriu od 2011 (približne 60 behov, dá sa spúšťať aj ručne).
 
 D1 na platenej verzii unesie 10 GB, čo stačí na celú históriu CRZ (cca 6 miliónov zmlúv).
