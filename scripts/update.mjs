@@ -108,10 +108,13 @@ if (process.env.FIXTURE) {
   console.log(`FIXTURE: ${list.length} zmlúv`);
 } else {
   const todo = [];
+  const retry = [];
   for (let d = windowStart; d <= yesterday; d = addDays(d, 1)) {
     const st = state.days[d];
-    if (!st || (st.missing && d >= addDays(today, -7)) || (st.failed && st.failed < 6)) todo.push(d);
+    if (!st || (st.missing && d >= addDays(today, -7))) todo.push(d);
+    else if (st.failed && st.failed < 6) retry.push(d); // dni, ktoré CRZ odmietol, skúšame znova až na konci
   }
+  todo.push(...retry);
   if (todo.length > MAX_DAYS) todo.splice(0, todo.length - MAX_DAYS);
   console.log(`Na stiahnutie: ${todo.length} dní`);
   for (const d of todo) { const res = await fetchDay(d); if (res === undefined) break; state.days[d] = res || { missing: true }; }
