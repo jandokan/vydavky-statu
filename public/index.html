@@ -29,7 +29,7 @@ h1 span{color:var(--acc)}
 #sug div:hover{background:var(--soft)}
 .small{font-size:12px;color:var(--mut)}
 #sheet{position:fixed;left:0;right:0;bottom:0;z-index:6;max-width:760px;margin:0 auto;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.15);display:flex;flex-direction:column;height:42vh;transition:height .2s;padding-bottom:env(safe-area-inset-bottom)}
-#sheet.min{height:92px} #sheet.max{height:88vh}
+#sheet.min{height:92px} #sheet.max{height:calc(100vh - 150px);height:calc(100dvh - 150px)}
 .grab{padding:6px 0 2px;display:flex;justify-content:center;cursor:pointer} .grab i{width:42px;height:5px;border-radius:3px;background:#d1d5db}
 .tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line);overflow-x:auto}
 .tabs button{border:0;background:none;font:inherit;font-size:14px;padding:8px 10px;color:var(--mut);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
@@ -242,7 +242,7 @@ function renderAbout() {
   return `<h3 style="margin:4px 0">O aplikácii</h3>
   <p>Mapa zmlúv z <a href="https://www.crz.gov.sk/" target="_blank">Centrálneho registra zmlúv</a>. Dáta sa automaticky sťahujú každú noc z oficiálneho denného exportu.</p>
   <div class="kpi"><div><span class="small">Posledný export</span><b>${fdate(m.lastDay) || '–'}</b></div><div><span class="small">Zmlúv v okne</span><b>${intf.format(m.contracts)}</b></div><div><span class="small">Miest na mape</span><b>${intf.format(m.places)}</b></div></div>
-  ${m.pendingDays ? `<div class="note">Prvotné sťahovanie ešte prebieha: chýba ${m.pendingDays} dní z ${m.windowDays}. CRZ obmedzuje rýchlosť sťahovania, zvyšok sa doplní pri ďalších automatických behoch.</div>` : ''}
+  ${m.pendingDays ? `<div class="note">Prvotné sťahovanie ešte prebieha: chýba ${m.pendingDays} ${m.pendingDays === 1 ? 'deň' : m.pendingDays < 5 ? 'dni' : 'dní'} z ${m.windowDays}. CRZ obmedzuje rýchlosť sťahovania, zvyšok sa doplní pri ďalších automatických behoch.</div>` : ''}
   <div class="note"><b>Ako čítať čísla:</b> suma je dohodnutá cena v zmluve (s dodatkami), nie skutočne vyplatené peniaze. Rámcové zmluvy, nulové sumy a nájmy to skresľujú. Zrušené a stiahnuté zmluvy sa do súm nezapočítavajú. Miesto je sídlo zmluvnej strany, nie miesto plnenia, preto je najviac peňazí v Bratislave.</div>
   <p class="small">Obdobie „Všetko“ = posledných ${m.windowDays} dní (od ${fdate(m.windowStart)}). Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries (PSČ ${intf.format(g.psc)}, názov obce ${intf.format(g.obec)}, približne podľa PSČ ${intf.format(g.psc3)}, neurčené ${intf.format(g.none)}); ${intf.format(g.empty)} strán nemá adresu (najmä fyzické osoby).</p>
   <p class="small">„Objednávateľ“ a „dodávateľ“ sú zmluvná strana 1 a 2 tak, ako ich uvádza CRZ.</p>
