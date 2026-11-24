@@ -35,14 +35,19 @@ const writeJson = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true })
 
 async function get(url, tries = 4) {
   for (let i = 1; i <= tries; i++) {
+    let status = 0;
     try {
       const r = await fetch(url, { headers: { 'User-Agent': UA } });
+      status = r.status;
       if (r.status === 404) return null;
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return Buffer.from(await r.arrayBuffer());
     } catch (e) {
       if (i === tries) throw new Error(`${url}: ${e.message}`);
-      await sleep(5000 * i);
+      // 403/429 = dočasný blok CRZ proti robotom → čakáme dlhšie
+      const wait = status === 403 || status === 429 ? 90000 * i : 5000 * i;
+      console.log(`  ${e.message}, čakám ${wait / 1000} s…`);
+      await sleep(wait);
     }
   }
 }
@@ -73,13 +78,17 @@ function merge(list) {
   }
 }
 
+let blocked = false; // keď nás CRZ zablokuje, zvyšok dosťahujeme v ďalšom behu
 async function fetchDay(d) {
-  const zip = await get(`http://www.crz.gov.sk/export/${d}.zip`);
+  if (blocked) return undefined;
+  let zip;
+  try { zip = await get(`http://www.crz.gov.sk/export/${d}.zip`); }
+  catch (e) { console.log(`STOP: ${e.message} – zvyšok dní sa stiahne v ďalšom behu`); blocked = true; return undefined; }
   if (!zip) { console.log(d, 'chýba'); await sleep(2500); return null; }
   let n = 0;
   for (const [name, buf] of Object.entries(unzip(zip))) if (name.endsWith('.xml')) { const list = parseExport(buf.toString('utf8')); merge(list); n += list.length; }
   console.log(d, n, 'zmien');
-  await sleep(2500); // CRZ odporúča max. 1 požiadavku / 2 s
+  await sleep(4000); // CRZ odporúča max. 1 požiadavku / 2 s, ideme pomalšie
   return { n, bytes: zip.length };
 }
 
@@ -93,13 +102,13 @@ if (process.env.FIXTURE) {
   for (let d = windowStart; d <= yesterday; d = addDays(d, 1)) if (!state.days[d] || state.days[d].missing) todo.push(d);
   if (todo.length > MAX_DAYS) todo.splice(0, todo.length - MAX_DAYS);
   console.log(`Na stiahnutie: ${todo.length} dní`);
-  for (const d of todo) state.days[d] = (await fetchDay(d)) || { missing: true };
+  for (const d of todo) { const res = await fetchDay(d); if (res === undefined) break; state.days[d] = res || { missing: true }; }
 
   // celá história (len pre platenú verziu s D1 – staršie dni idú iba do databázy)
   if (process.env.HISTORY_FROM) {
     let d = state.historyNext || process.env.HISTORY_FROM, k = 0;
     const lim = +(process.env.HISTORY_DAYS || 100);
-    while (d < windowStart && k < lim) { await fetchDay(d); d = addDays(d, 1); k++; }
+    while (!blocked && d < windowStart && k < lim) { if ((await fetchDay(d)) === undefined) break; d = addDays(d, 1); k++; }
     state.historyNext = d;
     console.log(`História: hotovo po ${d}${d >= windowStart ? ' (kompletná)' : ''}`);
   }
@@ -200,10 +209,12 @@ for (const d of Object.keys(daily)) if (d >= windowStart) delete daily[d];
 for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] || (daily[z] = { n: 0, s: 0 }); o.n++; o.s = round(o.s + amount(r)); }
 writeJson(path.join(API, 'daily.json'), daily);
 
+let pendingDays = 0;
+for (let d = windowStart; d <= yesterday; d = addDays(d, 1)) if (!state.days[d]) pendingDays++;
 const lastDay = Object.keys(state.days).filter((d) => !state.days[d].missing).sort().pop() || null;
 const meta = {
   generated: new Date().toISOString(), lastDay, windowDays: WINDOW, windowStart, placeCap: CAP,
-  contracts: records.size, active: all.length, places: places.size, changesThisRun: newCount, geocoding: geoStats,
+  contracts: records.size, active: all.length, pendingDays, places: places.size, changesThisRun: newCount, geocoding: geoStats,
   periods: { '7': d7, '30': d30, all: windowStart }, plan: 'free',
   sources: [
     { name: 'Centrálny register zmlúv, Úrad vlády SR', url: 'https://www.crz.gov.sk/', license: 'CC BY 4.0' },

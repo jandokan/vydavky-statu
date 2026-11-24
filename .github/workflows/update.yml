@@ -3,6 +3,7 @@ name: Denná aktualizácia CRZ
 on:
   schedule:
     - cron: '30 3 * * *'   # 04:30 SEČ, CRZ vytvára export okolo 02:00
+    - cron: '15 15 * * *'  # 16:15 SEČ, dosťahovanie, ak bol ranný beh zablokovaný
   workflow_dispatch:
     inputs:
       window_days:
