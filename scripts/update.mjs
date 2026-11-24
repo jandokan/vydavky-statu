@@ -1,0 +1,221 @@
+// Denná aktualizácia: stiahne nové exporty CRZ, zlúči ich so stavom, geokóduje
+// a vygeneruje statické JSON súbory pre mapu do DATA_DIR/api.
+//
+//   node scripts/update.mjs
+// Premenné prostredia:
+//   DATA_DIR      priečinok s dátami (vetva "data"), predvolene ./data
+//   WINDOW_DAYS   koľko dní dozadu držať detail zmlúv (Free verzia), predvolene 60
+//   PLACE_CAP     max. zmlúv na jedno miesto a rolu v detailnom súbore, predvolene 1500
+//   MAX_DAYS      max. počet dní stiahnutých v jednom behu, predvolene 400
+//   FIXTURE       lokálny XML súbor namiesto sťahovania (test)
+//   GEONAMES_FILE lokálny SK.txt namiesto sťahovania (test)
+//   HISTORY_FROM  (platená verzia s D1) dátum, od ktorého sa po častiach dosťahuje celá história
+//   HISTORY_DAYS  koľko starších dní dosťahovať v jednom behu, predvolene 100
+
+import fs from 'node:fs';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { unzip } from './zip.mjs';
+import { parseExport, amount, isActive } from './parse.mjs';
+import { loadGeoNames, makeGeocoder, norm } from './geo.mjs';
+
+const DATA = path.resolve(process.env.DATA_DIR || 'data');
+const WINDOW = +(process.env.WINDOW_DAYS || 60);
+const CAP = +(process.env.PLACE_CAP || 1500);
+const MAX_DAYS = +(process.env.MAX_DAYS || 400);
+const UA = 'vydavky-statu (open-data mapa CRZ; github.com/jandokan/vydavky-statu)';
+const STATE = path.join(DATA, 'state');
+const API = path.join(DATA, 'api');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const day = (d) => d.toISOString().slice(0, 10);
+const addDays = (s, n) => { const d = new Date(s + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return day(d); };
+const readJson = (f, def) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return def; } };
+const writeJson = (f, o) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, JSON.stringify(o)); };
+
+async function get(url, tries = 4) {
+  for (let i = 1; i <= tries; i++) {
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': UA } });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return Buffer.from(await r.arrayBuffer());
+    } catch (e) {
+      if (i === tries) throw new Error(`${url}: ${e.message}`);
+      await sleep(5000 * i);
+    }
+  }
+}
+
+// ---------- stav ----------
+fs.mkdirSync(STATE, { recursive: true });
+const recFile = path.join(STATE, 'records.ndjson.gz');
+const records = new Map();
+if (fs.existsSync(recFile)) {
+  for (const line of zlib.gunzipSync(fs.readFileSync(recFile)).toString('utf8').split('\n')) if (line) { const r = JSON.parse(line); records.set(r.id, r); }
+}
+const state = readJson(path.join(STATE, 'state.json'), { days: {} });
+const daily = readJson(path.join(STATE, 'daily.json'), {});
+console.log(`Stav: ${records.size} zmlúv, ${Object.keys(state.days).length} spracovaných dní`);
+
+// ---------- sťahovanie ----------
+const today = day(new Date());
+const yesterday = addDays(today, -1);
+const windowStart = addDays(today, -WINDOW);
+let newCount = 0;
+const changed = new Map(); // všetko, čo prišlo v tomto behu (pre import do D1)
+
+function merge(list) {
+  for (const r of list) {
+    const old = records.get(r.id); if (!old || (r.zmenene || '') >= (old.zmenene || '')) records.set(r.id, r);
+    const oc = changed.get(r.id); if (!oc || (r.zmenene || '') >= (oc.zmenene || '')) changed.set(r.id, r);
+    newCount++;
+  }
+}
+
+async function fetchDay(d) {
+  const zip = await get(`http://www.crz.gov.sk/export/${d}.zip`);
+  if (!zip) { console.log(d, 'chýba'); await sleep(2500); return null; }
+  let n = 0;
+  for (const [name, buf] of Object.entries(unzip(zip))) if (name.endsWith('.xml')) { const list = parseExport(buf.toString('utf8')); merge(list); n += list.length; }
+  console.log(d, n, 'zmien');
+  await sleep(2500); // CRZ odporúča max. 1 požiadavku / 2 s
+  return { n, bytes: zip.length };
+}
+
+if (process.env.FIXTURE) {
+  const list = parseExport(fs.readFileSync(process.env.FIXTURE, 'utf8'));
+  merge(list);
+  state.days['fixture'] = { n: list.length };
+  console.log(`FIXTURE: ${list.length} zmlúv`);
+} else {
+  const todo = [];
+  for (let d = windowStart; d <= yesterday; d = addDays(d, 1)) if (!state.days[d] || state.days[d].missing) todo.push(d);
+  if (todo.length > MAX_DAYS) todo.splice(0, todo.length - MAX_DAYS);
+  console.log(`Na stiahnutie: ${todo.length} dní`);
+  for (const d of todo) state.days[d] = (await fetchDay(d)) || { missing: true };
+
+  // celá história (len pre platenú verziu s D1 – staršie dni idú iba do databázy)
+  if (process.env.HISTORY_FROM) {
+    let d = state.historyNext || process.env.HISTORY_FROM, k = 0;
+    const lim = +(process.env.HISTORY_DAYS || 100);
+    while (d < windowStart && k < lim) { await fetchDay(d); d = addDays(d, 1); k++; }
+    state.historyNext = d;
+    console.log(`História: hotovo po ${d}${d >= windowStart ? ' (kompletná)' : ''}`);
+  }
+}
+
+// ---------- okno: držíme zmluvy zverejnené za posledných WINDOW dní ----------
+for (const [id, r] of records) if (!r.zverejnene || r.zverejnene.slice(0, 10) < windowStart) records.delete(id);
+for (const d of Object.keys(state.days)) if (d !== 'fixture' && d < addDays(windowStart, -5)) delete state.days[d];
+
+// ---------- geokódovanie ----------
+const gtxt = process.env.GEONAMES_FILE
+  ? fs.readFileSync(process.env.GEONAMES_FILE, 'utf8')
+  : unzip(await get('https://download.geonames.org/export/zip/SK.zip'))['SK.txt'].toString('utf8');
+const geo = loadGeoNames(gtxt);
+const geocode = makeGeocoder(geo);
+const placeByKey = new Map(geo.places.map((p) => [p.key, p]));
+console.log(`GeoNames: ${geo.places.length} miest`);
+for (const r of changed.values()) { r.miesto_o = geocode(r.objednavatel_adresa)?.key || null; r.miesto_d = geocode(r.dodavatel_adresa)?.key || null; }
+
+// ---------- výstupy ----------
+fs.rmSync(API, { recursive: true, force: true });
+fs.mkdirSync(path.join(API, 'p'), { recursive: true });
+
+const FIELDS = ['id', 'cislo', 'objednavatel', 'objednavatel_ico', 'objednavatel_adresa', 'dodavatel', 'dodavatel_ico', 'dodavatel_adresa',
+  'predmet', 'popis', 'popis_predmetu', 'poznamka', 'poznamka_zmena', 'interna_poznamka', 'text_ucinnost', 'datum_podpisu', 'datum_ucinnosti',
+  'platnost_do', 'zverejnene', 'zmenene', 'suma', 'suma_spolu', 'stav', 'typ', 'druh', 'zdroj', 'rezort', 'interne_id', 'referencia',
+  'obstaravanie', 'potvrdenie', 'potvrdenie_datum', 'zmeny', 'prilohy', 'miesto_o', 'miesto_d'];
+const row = (r) => FIELDS.map((f) => (f === 'prilohy' ? r.prilohy.map((p) => [p.nazov, p.subor, p.velkost]) : r[f] ?? null));
+
+const d7 = addDays(today, -7), d30 = addDays(today, -30);
+const periods = [['7', d7], ['30', d30], ['all', windowStart]];
+const places = new Map();
+const ents = new Map();
+const okresy = new Map();
+const geoStats = { psc: 0, obec: 0, psc3: 0, none: 0, empty: 0 };
+const unmatched = new Map();
+
+function agg(obj, role, r, a) {
+  const z = r.zverejnene.slice(0, 10);
+  for (const [k, from] of periods) if (z >= from) {
+    obj[`${role}${k}n`] = (obj[`${role}${k}n`] || 0) + 1;
+    obj[`${role}${k}s`] = (obj[`${role}${k}s`] || 0) + a;
+  }
+}
+
+for (const r of records.values()) {
+  const a = isActive(r) ? amount(r) : 0;
+  for (const role of ['o', 'd']) {
+    const addr = role === 'o' ? r.objednavatel_adresa : r.dodavatel_adresa;
+    const g = addr ? geocode(addr) : null;
+    if (!addr) geoStats.empty++; else if (!g) { geoStats.none++; unmatched.set(addr, (unmatched.get(addr) || 0) + 1); } else geoStats[g.how]++;
+    r['miesto_' + role] = g ? g.key : null;
+    if (g) {
+      let pl = places.get(g.key);
+      if (!pl) places.set(g.key, (pl = { key: g.key, o: [], d: [] }));
+      pl[role].push(r);
+      agg(pl, role, r, a);
+      const ok = placeByKey.get(g.key).okres;
+      let o = okresy.get(ok); if (!o) okresy.set(ok, (o = { okres: ok, kraj: placeByKey.get(g.key).kraj }));
+      agg(o, role, r, a);
+    }
+    const name = role === 'o' ? r.objednavatel : r.dodavatel;
+    const ico = role === 'o' ? r.objednavatel_ico : r.dodavatel_ico;
+    if (name) {
+      const ek = role + ':' + (ico || norm(name));
+      let e = ents.get(ek); if (!e) ents.set(ek, (e = { name, ico, role, place: g?.key || null, n: 0, s: 0 }));
+      e.n++; e.s += a; if (!e.place && g) e.place = g.key;
+    }
+  }
+}
+
+const PCOLS = ['key', 'name', 'okres', 'kraj', 'lat', 'lon'];
+const MCOLS = []; for (const role of ['o', 'd']) for (const [k] of periods) MCOLS.push(`${role}${k}n`, `${role}${k}s`);
+const round = (x) => Math.round(x * 100) / 100;
+const placeRows = [];
+for (const pl of places.values()) {
+  const g = placeByKey.get(pl.key);
+  placeRows.push([pl.key, g.name, g.okres, g.kraj, g.lat, g.lon, ...MCOLS.map((c) => round(pl[c] || 0))]);
+  const pick = (list) => list.sort((x, y) => amount(y) - amount(x)).slice(0, CAP).map(row);
+  writeJson(path.join(API, 'p', pl.key + '.json'), {
+    key: pl.key, name: g.name, okres: g.okres, kraj: g.kraj, lat: g.lat, lon: g.lon,
+    oTotal: pl.o.length, dTotal: pl.d.length, cap: CAP, fields: FIELDS, o: pick(pl.o), d: pick(pl.d),
+  });
+}
+writeJson(path.join(API, 'places.json'), { cols: [...PCOLS, ...MCOLS], rows: placeRows });
+writeJson(path.join(API, 'okresy.json'), { cols: ['okres', 'kraj', ...MCOLS], rows: [...okresy.values()].map((o) => [o.okres, o.kraj, ...MCOLS.map((c) => round(o[c] || 0))]) });
+
+const all = [...records.values()].filter(isActive);
+const top = (from) => all.filter((r) => r.zverejnene.slice(0, 10) >= from).sort((a, b) => amount(b) - amount(a)).slice(0, 300).map(row);
+writeJson(path.join(API, 'top.json'), { fields: FIELDS, '7': top(d7), '30': top(d30), all: top(windowStart) });
+
+const entRows = [...ents.values()].sort((a, b) => b.s - a.s);
+const topEnt = (role) => entRows.filter((e) => e.role === role).slice(0, 15000).map((e) => [e.name, e.ico, e.place, e.n, round(e.s)]);
+writeJson(path.join(API, 'names.json'), { cols: ['name', 'ico', 'place', 'n', 's'], o: topEnt('o'), d: topEnt('d') });
+
+// denné súčty: dni v okne prepočítame, staršie zostávajú v histórii natrvalo
+for (const d of Object.keys(daily)) if (d >= windowStart) delete daily[d];
+for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] || (daily[z] = { n: 0, s: 0 }); o.n++; o.s = round(o.s + amount(r)); }
+writeJson(path.join(API, 'daily.json'), daily);
+
+const lastDay = Object.keys(state.days).filter((d) => !state.days[d].missing).sort().pop() || null;
+const meta = {
+  generated: new Date().toISOString(), lastDay, windowDays: WINDOW, windowStart, placeCap: CAP,
+  contracts: records.size, active: all.length, places: places.size, changesThisRun: newCount, geocoding: geoStats,
+  periods: { '7': d7, '30': d30, all: windowStart }, plan: 'free',
+  sources: [
+    { name: 'Centrálny register zmlúv, Úrad vlády SR', url: 'https://www.crz.gov.sk/', license: 'CC BY 4.0' },
+    { name: 'GeoNames – PSČ Slovenska', url: 'https://www.geonames.org/', license: 'CC BY 4.0' },
+  ],
+};
+writeJson(path.join(API, 'meta.json'), meta);
+
+// ---------- uloženie stavu ----------
+fs.writeFileSync(recFile, zlib.gzipSync([...records.values()].map((r) => JSON.stringify(r)).join('\n')));
+fs.writeFileSync(path.join(STATE, 'changes.ndjson.gz'), zlib.gzipSync([...changed.values()].map((r) => JSON.stringify(r)).join('\n')));
+writeJson(path.join(STATE, 'state.json'), state);
+writeJson(path.join(STATE, 'daily.json'), daily);
+writeJson(path.join(STATE, 'unmatched.json'), [...unmatched].sort((a, b) => b[1] - a[1]).slice(0, 500));
+console.log(JSON.stringify(meta, null, 1));

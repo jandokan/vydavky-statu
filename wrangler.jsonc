@@ -1,0 +1,10 @@
+{
+  // Worker sa nasadzuje len pri zmene worker/index.js. Stránka a dáta sa čítajú z GitHubu.
+  "name": "vydavky-statu",
+  "main": "worker/index.js",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "vars": { "GH_REPO": "jandokan/vydavky-statu" }
+  // Platená verzia – odkomentuj po vytvorení D1 databázy:
+  // ,"d1_databases": [{ "binding": "DB", "database_name": "vydavky-statu", "database_id": "<ID>" }]
+}

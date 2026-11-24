@@ -1,0 +1,9 @@
+SK	813 57	Bratislava 1	Bratislavsky	BL	Okres Bratislava I	101			48.1446	17.1077	4
+SK	821 08	Bratislava 2	Bratislavsky	BL	Okres Bratislava II	102			48.153	17.13	4
+SK	821 04	Bratislava 2	Bratislavsky	BL	Okres Bratislava II	102			48.16	17.17	4
+SK	841 07	Devínska Nová Ves	Bratislavsky	BL	Okres Bratislava IV	104			48.2	16.98	4
+SK	937 01	Želiezovce	Nitriansky	NI	Okres Levice	402			47.98	18.66	4
+SK	038 21	Mošovce	Zilinsky	ZI	Okres Turčianske Teplice	507			48.9	18.88	4
+SK	900 67	Láb	Bratislavsky	BL	Okres Malacky	106			48.37	16.96	4
+SK	072 03	Tušická Nová Ves	Kosicky	KI	Okres Michalovce	803			48.73	21.75	4
+SK	815 00	Bratislava 15	Bratislavsky	BL	Okres Bratislava I	101			48.14	17.11	4

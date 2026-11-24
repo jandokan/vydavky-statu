@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Výdavky štátu – mapa zmlúv z CRZ</title>
+<meta name="description" content="Interaktívna mapa zmlúv z Centrálneho registra zmlúv. Kto platí, kto dostáva a koľko.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+:root{--bg:#fff;--fg:#111827;--mut:#6b7280;--line:#e5e7eb;--soft:#f3f4f6;--o:#1d4ed8;--d:#c2410c;--acc:var(--o);--r:12px}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--fg);background:var(--bg)}
+body.role-d{--acc:var(--d)}
+#map{position:fixed;inset:0}
+header{position:fixed;top:0;left:0;right:0;z-index:5;padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;pointer-events:none}
+.bar{pointer-events:auto;background:rgba(255,255,255,.96);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r);box-shadow:0 2px 10px rgba(0,0,0,.08);padding:8px;max-width:760px;margin:0 auto}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+h1{font-size:15px;margin:0 6px 0 2px;white-space:nowrap}
+h1 span{color:var(--acc)}
+.seg{display:inline-flex;background:var(--soft);border-radius:9px;padding:2px}
+.seg button{border:0;background:transparent;padding:6px 9px;border-radius:7px;font:inherit;font-size:13px;color:var(--mut);cursor:pointer;white-space:nowrap}
+.seg button.on{background:#fff;color:var(--fg);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.seg.role button.on[data-v=o]{color:var(--o)} .seg.role button.on[data-v=d]{color:var(--d)}
+#q{flex:1;min-width:150px;border:1px solid var(--line);border-radius:9px;padding:7px 10px;font:inherit;font-size:14px}
+#sug{display:none;margin-top:6px;max-height:45vh;overflow:auto;border-top:1px solid var(--line)}
+#sug div{padding:8px 4px;border-bottom:1px solid var(--soft);cursor:pointer;display:flex;justify-content:space-between;gap:8px}
+#sug div:hover{background:var(--soft)}
+.small{font-size:12px;color:var(--mut)}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:6;max-width:760px;margin:0 auto;background:#fff;border-radius:16px 16px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.15);display:flex;flex-direction:column;height:42vh;transition:height .2s;padding-bottom:env(safe-area-inset-bottom)}
+#sheet.min{height:92px} #sheet.max{height:88vh}
+.grab{padding:6px 0 2px;display:flex;justify-content:center;cursor:pointer} .grab i{width:42px;height:5px;border-radius:3px;background:#d1d5db}
+.tabs{display:flex;gap:2px;padding:0 10px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:0;background:none;font:inherit;font-size:14px;padding:8px 10px;color:var(--mut);border-bottom:2px solid transparent;cursor:pointer;white-space:nowrap}
+.tabs button.on{color:var(--fg);border-color:var(--acc);font-weight:600}
+#body{overflow:auto;padding:10px 12px 20px;flex:1}
+.kpi{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
+.kpi div{background:var(--soft);border-radius:10px;padding:8px 10px;flex:1;min-width:120px}
+.kpi b{display:block;font-size:17px}
+.card{border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin:7px 0;cursor:pointer}
+.card.dead{opacity:.55}
+.card .top{display:flex;justify-content:space-between;gap:10px}
+.card .sum{font-weight:700;white-space:nowrap}
+.card .t{font-weight:600}
+.parties{font-size:13px;color:var(--mut);margin-top:2px}
+.badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;background:var(--soft);color:var(--mut);margin-left:4px}
+.badge.red{background:#fee2e2;color:#991b1b}
+.det{display:none;margin-top:8px;border-top:1px solid var(--soft);padding-top:6px}
+.card.open .det{display:block}
+.det table{width:100%;border-collapse:collapse;font-size:13px}
+.det td{padding:3px 4px;vertical-align:top;border-bottom:1px solid var(--soft);word-break:break-word}
+.det td:first-child{color:var(--mut);width:38%}
+a{color:var(--acc)}
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 12px;font:inherit;cursor:pointer;width:100%;margin-top:8px}
+.ent{display:flex;justify-content:space-between;gap:10px;padding:8px 2px;border-bottom:1px solid var(--soft);cursor:pointer}
+.ent:hover{background:var(--soft)}
+.note{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:8px 10px;font-size:13px;margin:8px 0}
+#chart svg{width:100%;height:auto;display:block}
+.load{color:var(--mut);padding:20px 0;text-align:center}
+.maplibregl-ctrl-bottom-right{bottom:calc(42vh + 4px)}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<header><div class="bar">
+  <div class="row">
+    <h1>Výdavky štátu <span>· CRZ</span></h1>
+    <div class="seg role" id="role"><button data-v="o" class="on">Kto platí</button><button data-v="d">Kto dostáva</button></div>
+    <div class="seg" id="per"><button data-v="7">7 dní</button><button data-v="30" class="on">30 dní</button><button data-v="all" id="perAll">Všetko</button></div>
+    <div class="seg" id="met"><button data-v="s" class="on">€</button><button data-v="n">Počet</button></div>
+    <input id="q" type="search" placeholder="Hľadať firmu, úrad, IČO…" autocomplete="off">
+  </div>
+  <div id="sug"></div>
+</div></header>
+
+<section id="sheet">
+  <div class="grab" id="grab"><i></i></div>
+  <nav class="tabs" id="tabs">
+    <button data-t="place">Miesto</button>
+    <button data-t="top" class="on">Najväčšie zmluvy</button>
+    <button data-t="ents">Subjekty</button>
+    <button data-t="chart">Vývoj</button>
+    <button data-t="about">O dátach</button>
+  </nav>
+  <div id="body"><div class="load">Načítavam…</div></div>
+</section>
+
+<script>
+'use strict';
+const S = { role: 'o', per: '30', met: 's', tab: 'top', meta: null, places: null, cols: null, place: null, placeRole: 'o', filter: '', names: null, top: null, shown: 50 };
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const eur = new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const eur2 = new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
+const intf = new Intl.NumberFormat('sk-SK');
+const short = (v) => v >= 1e9 ? (v / 1e9).toFixed(1).replace('.', ',') + ' mld €' : v >= 1e6 ? (v / 1e6).toFixed(1).replace('.', ',') + ' mil €' : v >= 1e3 ? Math.round(v / 1e3) + ' tis €' : Math.round(v) + ' €';
+const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const fdate = (s) => s ? s.slice(0, 10).split('-').reverse().join('.') : '';
+const STAV = { 1: 'rozpracovaná', 2: 'zverejnená', 3: 'doplnená', 4: 'zrušená', 5: 'stiahnutá' };
+const TYP = { 1: 'zmluva / dodatok', 2: 'informácia o zmluve' };
+const DRUH = { 0: 'zmluva', 1: 'zmluva', 2: 'dodatok' };
+const ZDROJ = { 1: 'webové rozhranie', 2: 'XML import', 3: 'XML robot' };
+const LABEL = {
+  id: 'ID v CRZ', cislo: 'Číslo zmluvy', objednavatel: 'Objednávateľ (strana 1)', objednavatel_ico: 'IČO objednávateľa', objednavatel_adresa: 'Sídlo objednávateľa',
+  dodavatel: 'Dodávateľ (strana 2)', dodavatel_ico: 'IČO dodávateľa', dodavatel_adresa: 'Sídlo dodávateľa', predmet: 'Predmet', popis: 'Popis', popis_predmetu: 'Popis predmetu',
+  poznamka: 'Poznámka', poznamka_zmena: 'Poznámka k zmene', interna_poznamka: 'Interná poznámka CRZ', text_ucinnost: 'Poznámka k účinnosti', datum_podpisu: 'Dátum podpisu',
+  datum_ucinnosti: 'Dátum účinnosti', platnost_do: 'Platnosť do', zverejnene: 'Zverejnené', zmenene: 'Posledná zmena', suma: 'Zmluvná suma', suma_spolu: 'Suma vrátane dodatkov',
+  stav: 'Stav', typ: 'Typ', druh: 'Druh', zdroj: 'Spôsob zverejnenia', rezort: 'ID rezortu', interne_id: 'Interné ID', referencia: 'Referencia (napr. hlavná zmluva)',
+  obstaravanie: 'Verejné obstarávanie', potvrdenie: 'Potvrdenie o zverejnení', potvrdenie_datum: 'Dátum potvrdenia', zmeny: 'Záznam zmien', prilohy: 'Prílohy',
+};
+let V = '';
+const api = (f) => fetch('/api/' + f + (V ? '?v=' + encodeURIComponent(V) : '')).then((r) => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
+
+// ---------- mapa ----------
+const map = new maplibregl.Map({
+  container: 'map', style: 'https://tiles.openfreemap.org/styles/positron',
+  center: [19.6, 48.7], zoom: 6.4, minZoom: 5, maxBounds: [[15.5, 47.2], [23.8, 50.1]], attributionControl: { compact: true },
+  customAttribution: 'Dáta: <a href="https://www.crz.gov.sk/">CRZ</a> (CC BY 4.0), <a href="https://www.geonames.org/">GeoNames</a>',
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+
+function geojson() {
+  const c = S.cols, iN = c.indexOf(`${S.role}${S.per}n`), iS = c.indexOf(`${S.role}${S.per}s`), iV = S.met === 's' ? iS : iN;
+  const feats = [];
+  for (const r of S.places) {
+    if (!r[iN]) continue;
+    feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r[5], r[4]] }, properties: { key: r[0], name: r[1], v: r[iV], n: r[iN], s: r[iS] } });
+  }
+  return { type: 'FeatureCollection', features: feats };
+}
+function maxV(gj) { let m = 1; for (const f of gj.features) m = Math.max(m, f.properties.v); return m; }
+
+function drawMap() {
+  const gj = geojson(), mx = maxV(gj), col = S.role === 'o' ? '#1d4ed8' : '#c2410c';
+  const label = S.met === 's'
+    ? ['case', ['>=', ['get', 'v'], 1e9], ['concat', ['to-string', ['/', ['round', ['/', ['get', 'v'], 1e8]], 10]], ' mld'],
+        ['>=', ['get', 'v'], 1e6], ['concat', ['to-string', ['/', ['round', ['/', ['get', 'v'], 1e5]], 10]], ' mil'],
+        ['>=', ['get', 'v'], 1e3], ['concat', ['to-string', ['round', ['/', ['get', 'v'], 1e3]]], ' tis'], ['to-string', ['round', ['get', 'v']]]]
+    : ['to-string', ['get', 'v']];
+  const radius = ['interpolate', ['linear'], ['sqrt', ['get', 'v']], 0, 5, Math.sqrt(mx) * 0.15, 14, Math.sqrt(mx), 42];
+  if (map.getSource('pl')) {
+    map.getSource('pl').setData(gj);
+    for (const id of ['cl', 'pt']) { map.setPaintProperty(id, 'circle-color', col); map.setPaintProperty(id, 'circle-radius', radius); }
+    map.setLayoutProperty('lbl', 'text-field', label);
+    return;
+  }
+  map.addSource('pl', { type: 'geojson', data: gj, cluster: true, clusterRadius: 38, clusterMaxZoom: 10, clusterProperties: { v: ['+', ['get', 'v']] } });
+  map.addLayer({ id: 'cl', type: 'circle', source: 'pl', filter: ['has', 'point_count'], paint: { 'circle-color': col, 'circle-opacity': .55, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
+  map.addLayer({ id: 'pt', type: 'circle', source: 'pl', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': col, 'circle-opacity': .7, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } });
+  map.addLayer({ id: 'lbl', type: 'symbol', source: 'pl', layout: { 'text-field': label, 'text-size': 11, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': false }, paint: { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 1.4 } });
+  map.on('click', 'cl', async (e) => {
+    const f = e.features[0]; const z = await map.getSource('pl').getClusterExpansionZoom(f.properties.cluster_id);
+    map.easeTo({ center: f.geometry.coordinates, zoom: z + 0.3 });
+  });
+  map.on('click', 'pt', (e) => openPlace(e.features[0].properties.key));
+  for (const id of ['cl', 'pt']) { map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); }
+}
+
+// ---------- panel ----------
+function setTab(t) { S.tab = t; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t)); render(); }
+function sheet(cls) { $('#sheet').className = cls || ''; }
+$('#grab').onclick = () => { const c = $('#sheet').className; sheet(c === 'min' ? '' : c === '' ? 'max' : 'min'); };
+$('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { setTab(b.dataset.t); if ($('#sheet').className === 'min') sheet(''); } };
+
+function contractCard(f, r) {
+  const o = Object.fromEntries(f.map((k, i) => [k, r[i]]));
+  const amt = o.suma_spolu > 0 ? o.suma_spolu : o.suma;
+  const dead = o.stav === 4 || o.stav === 5;
+  const rows = f.filter((k) => k !== 'prilohy' && !k.startsWith('miesto_') && o[k] != null && o[k] !== '').map((k) => {
+    let v = o[k];
+    if (k === 'suma' || k === 'suma_spolu') v = eur2.format(v);
+    else if (k === 'stav') v = STAV[v] || v; else if (k === 'typ') v = TYP[v] || v; else if (k === 'druh') v = DRUH[v] || v; else if (k === 'zdroj') v = ZDROJ[v] || v;
+    else if (k === 'obstaravanie' && /^https?:/.test(v)) return `<tr><td>${LABEL[k]}</td><td><a href="${esc(v)}" target="_blank" rel="noopener">odkaz</a></td></tr>`;
+    else if (k === 'objednavatel_ico' || k === 'dodavatel_ico') return `<tr><td>${LABEL[k]}</td><td>${esc(v)} · <a href="https://www.finstat.sk/${esc(v)}" target="_blank" rel="noopener">FinStat</a> · <a href="https://www.orsr.sk/hladaj_ico.asp?ICO=${esc(v)}&SID=0" target="_blank" rel="noopener">ORSR</a></td></tr>`;
+    else if (/datum|zverejnene|zmenene|platnost/.test(k)) v = fdate(v) + (String(v).length > 10 ? ' ' + String(v).slice(11, 16) : '');
+    return `<tr><td>${LABEL[k] || k}</td><td>${esc(v)}</td></tr>`;
+  }).join('');
+  const att = (o.prilohy || []).map((p) => `<div>📄 ${p[1] ? `<a href="https://www.crz.gov.sk/data/att/${esc(p[1])}" target="_blank" rel="noopener">${esc(p[0] || p[1])}</a>` : esc(p[0])}${p[2] ? ` <span class="small">(${Math.round(p[2] / 1024)} kB)</span>` : ''}</div>`).join('');
+  return `<div class="card${dead ? ' dead' : ''}" onclick="if(!event.target.closest('a'))this.classList.toggle('open')">
+    <div class="top"><div class="t">${esc(o.predmet || o.cislo || 'Zmluva')}</div><div class="sum">${eur.format(amt || 0)}</div></div>
+    <div class="parties">${esc(o.objednavatel || '?')} → ${esc(o.dodavatel || '?')}</div>
+    <div class="small">${fdate(o.zverejnene)}${o.druh === 2 ? '<span class="badge">dodatok</span>' : ''}${o.typ === 2 ? '<span class="badge">informácia</span>' : ''}${dead ? `<span class="badge red">${STAV[o.stav]}</span>` : ''}</div>
+    <div class="det"><table>${rows}</table>${att ? '<div style="margin-top:6px">' + att + '</div>' : ''}
+      <div style="margin-top:6px"><a href="https://www.crz.gov.sk/zmluva/${o.id}/" target="_blank" rel="noopener">Otvoriť v CRZ ↗</a></div></div>
+  </div>`;
+}
+
+const perName = () => S.per === 'all' ? `${S.meta.windowDays} dní` : `${S.per} dní`;
+function inPeriod(f, r) { const z = r[f.indexOf('zverejnene')] || ''; return z.slice(0, 10) >= S.meta.periods[S.per]; }
+
+function renderPlace() {
+  const P = S.place;
+  if (!P) return `<p class="small">Ťukni na krúžok na mape. Krúžok = miesto (podľa PSČ sídla), veľkosť = suma zmlúv ${S.role === 'o' ? 'objednávateľov' : 'dodávateľov'} so sídlom v tomto mieste.</p>`;
+  const f = P.fields, iA = [f.indexOf('suma_spolu'), f.indexOf('suma')], iS = f.indexOf('stav');
+  let list = P[S.placeRole].filter((r) => inPeriod(f, r));
+  if (S.filter) { const q = norm(S.filter); list = list.filter((r) => norm(r.join(' ')).includes(q)); }
+  const amt = (r) => (r[iA[0]] > 0 ? r[iA[0]] : r[iA[1]]) || 0;
+  const sum = list.reduce((a, r) => a + (r[iS] === 4 || r[iS] === 5 ? 0 : amt(r)), 0);
+  const total = S.placeRole === 'o' ? P.oTotal : P.dTotal;
+  return `<div class="row" style="justify-content:space-between"><div><b style="font-size:17px">${esc(P.name)}</b><div class="small">okres ${esc(P.okres)} · ${esc(P.kraj)} · posledných ${perName()}</div></div></div>
+    <div class="seg" style="margin:8px 0" id="prole"><button data-v="o" class="${S.placeRole === 'o' ? 'on' : ''}">Platia odtiaľto (${P.o.length})</button><button data-v="d" class="${S.placeRole === 'd' ? 'on' : ''}">Dostávajú sem (${P.d.length})</button></div>
+    ${S.filter ? `<div class="note">Filter: <b>${esc(S.filter)}</b> · <a href="#" onclick="S.filter='';render();return false">zrušiť</a></div>` : ''}
+    <div class="kpi"><div><span class="small">Suma</span><b>${eur.format(sum)}</b></div><div><span class="small">Zmlúv</span><b>${intf.format(list.length)}</b></div></div>
+    ${total > P.cap ? `<div class="note">Zobrazených je ${intf.format(P.cap)} najväčších z ${intf.format(total)} zmlúv. Úplný zoznam bude v platenej verzii s databázou.</div>` : ''}
+    ${list.slice(0, S.shown).map((r) => contractCard(f, r)).join('') || '<p class="small">Žiadne zmluvy v tomto období.</p>'}
+    ${list.length > S.shown ? `<button class="btn" onclick="S.shown+=50;render()">Ďalšie (${list.length - S.shown})</button>` : ''}`;
+}
+
+function renderTop() {
+  if (!S.top) { api('top.json').then((t) => { S.top = t; render(); }); return '<div class="load">Načítavam…</div>'; }
+  const rows = S.top[S.per];
+  return `<p class="small">Najväčšie aktívne zmluvy zverejnené za posledných ${perName()} (podľa sumy vrátane dodatkov).</p>` + rows.slice(0, S.shown).map((r) => contractCard(S.top.fields, r)).join('')
+    + (rows.length > S.shown ? `<button class="btn" onclick="S.shown+=50;render()">Ďalšie</button>` : '');
+}
+
+async function loadNames() { if (!S.names) S.names = await api('names.json'); return S.names; }
+function renderEnts() {
+  if (!S.names) { loadNames().then(render); return '<div class="load">Načítavam…</div>'; }
+  const list = S.names[S.role].slice(0, 100);
+  return `<p class="small">${S.role === 'o' ? 'Kto najviac platí' : 'Kto najviac dostáva'} – súčet zmlúv za posledných ${S.meta.windowDays} dní. Ťukni pre zobrazenie na mape.</p>`
+    + list.map((e, i) => `<div class="ent" onclick="goEnt('${S.role}',${i})"><div><b>${i + 1}.</b> ${esc(e[0])}<div class="small">${e[1] ? 'IČO ' + esc(e[1]) + ' · ' : ''}${intf.format(e[3])} zmlúv</div></div><div class="sum"><b>${short(e[4])}</b></div></div>`).join('');
+}
+window.goEnt = (role, i) => { const e = S.names[role][i]; if (!e[2]) { alert('Sídlo sa nepodarilo umiestniť na mapu.'); return; } setRole(role); openPlace(e[2], e[0], role); };
+
+function renderChart() {
+  if (!S.daily) { api('daily.json').then((d) => { S.daily = d; render(); }); return '<div class="load">Načítavam…</div>'; }
+  const days = Object.keys(S.daily).sort().slice(-120);
+  const vals = days.map((d) => S.daily[d][S.met === 's' ? 's' : 'n']);
+  const mx = Math.max(1, ...vals), W = 720, H = 220, bw = W / days.length;
+  const bars = days.map((d, i) => { const h = (vals[i] / mx) * (H - 30); const we = [0, 6].includes(new Date(d).getDay());
+    return `<rect x="${(i * bw).toFixed(1)}" y="${(H - 20 - h).toFixed(1)}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${we ? '#cbd5e1' : 'var(--acc)'}"><title>${fdate(d)}: ${S.met === 's' ? eur.format(vals[i]) : vals[i] + ' zmlúv'}</title></rect>`; }).join('');
+  const ticks = days.map((d, i) => d.endsWith('-01') ? `<text x="${(i * bw).toFixed(1)}" y="${H - 5}" font-size="11" fill="#6b7280">${d.slice(5, 7)}/${d.slice(2, 4)}</text>` : '').join('');
+  const tot = vals.reduce((a, b) => a + b, 0);
+  return `<p class="small">${S.met === 's' ? 'Suma' : 'Počet'} zmlúv podľa dňa zverejnenia (posledných ${days.length} dní${days.length ? ', od ' + fdate(days[0]) : ''}). Víkendy sú sivé. Staršie dni sa ukladajú natrvalo, takže graf bude rásť.</p>
+    <div class="kpi"><div><span class="small">Spolu</span><b>${S.met === 's' ? short(tot) : intf.format(tot)}</b></div><div><span class="small">Max. deň</span><b>${S.met === 's' ? short(mx) : intf.format(mx)}</b></div></div>
+    <div id="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Denný vývoj">${bars}${ticks}</svg></div>`;
+}
+
+function renderAbout() {
+  const m = S.meta, g = m.geocoding, tot = g.psc + g.obec + g.psc3 + g.none;
+  return `<h3 style="margin:4px 0">O aplikácii</h3>
+  <p>Mapa zmlúv z <a href="https://www.crz.gov.sk/" target="_blank">Centrálneho registra zmlúv</a>. Dáta sa automaticky sťahujú každú noc z oficiálneho denného exportu.</p>
+  <div class="kpi"><div><span class="small">Posledný export</span><b>${fdate(m.lastDay) || '–'}</b></div><div><span class="small">Zmlúv v okne</span><b>${intf.format(m.contracts)}</b></div><div><span class="small">Miest na mape</span><b>${intf.format(m.places)}</b></div></div>
+  <div class="note"><b>Ako čítať čísla:</b> suma je dohodnutá cena v zmluve (s dodatkami), nie skutočne vyplatené peniaze. Rámcové zmluvy, nulové sumy a nájmy to skresľujú. Zrušené a stiahnuté zmluvy sa do súm nezapočítavajú. Miesto je sídlo zmluvnej strany, nie miesto plnenia, preto je najviac peňazí v Bratislave.</div>
+  <p class="small">Obdobie „Všetko“ = posledných ${m.windowDays} dní (od ${fdate(m.windowStart)}). Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries (PSČ ${intf.format(g.psc)}, názov obce ${intf.format(g.obec)}, približne podľa PSČ ${intf.format(g.psc3)}, neurčené ${intf.format(g.none)}); ${intf.format(g.empty)} strán nemá adresu (najmä fyzické osoby).</p>
+  <p class="small">„Objednávateľ“ a „dodávateľ“ sú zmluvná strana 1 a 2 tak, ako ich uvádza CRZ.</p>
+  <h4 style="margin:10px 0 4px">Zdroje a licencie</h4>
+  <ul class="small">${m.sources.map((s) => `<li><a href="${s.url}" target="_blank">${esc(s.name)}</a> – ${esc(s.license)}</li>`).join('')}<li>Mapa © <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a>, © OpenStreetMap prispievatelia</li></ul>
+  <p class="small">Vygenerované ${new Date(m.generated).toLocaleString('sk-SK')} · verzia ${m.plan === 'free' ? 'Free' : 'Paid'}</p>`;
+}
+
+function render() {
+  const b = $('#body');
+  b.innerHTML = { place: renderPlace, top: renderTop, ents: renderEnts, chart: renderChart, about: renderAbout }[S.tab]();
+  const pr = $('#prole'); if (pr) pr.onclick = (e) => { const x = e.target.closest('button'); if (x) { S.placeRole = x.dataset.v; S.shown = 50; render(); } };
+}
+
+async function openPlace(key, filter = '', role) {
+  setTab('place'); sheet(''); $('#body').innerHTML = '<div class="load">Načítavam…</div>';
+  try {
+    S.place = await api('p/' + encodeURIComponent(key) + '.json');
+    S.placeRole = role || S.role; S.filter = filter || ''; S.shown = 50;
+    map.easeTo({ center: [S.place.lon, S.place.lat], zoom: Math.max(map.getZoom(), 9) });
+    render();
+  } catch (e) { $('#body').innerHTML = `<p>Chyba: ${esc(e.message)}</p>`; }
+}
+
+// ---------- ovládanie ----------
+function seg(id, fn) { $(id).onclick = (e) => { const b = e.target.closest('button'); if (!b) return; $(id).querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); fn(b.dataset.v); }; }
+function setRole(v) { S.role = v; document.body.classList.toggle('role-d', v === 'd'); $('#role').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.v === v)); drawMap(); }
+seg('#role', (v) => { setRole(v); S.shown = 50; render(); });
+seg('#per', (v) => { S.per = v; S.shown = 50; drawMap(); render(); });
+seg('#met', (v) => { S.met = v; drawMap(); render(); });
+
+const q = $('#q'), sug = $('#sug');
+q.addEventListener('focus', loadNames);
+q.addEventListener('input', async () => {
+  const t = norm(q.value.trim());
+  if (t.length < 2) { sug.style.display = 'none'; return; }
+  const N = await loadNames(); const out = [];
+  for (const role of ['o', 'd']) N[role].forEach((e, i) => { if (out.length < 40 && (norm(e[0]).includes(t) || (e[1] && e[1].includes(t)))) out.push([role, i, e]); });
+  out.sort((a, b) => b[2][4] - a[2][4]);
+  sug.innerHTML = out.slice(0, 20).map(([role, i, e]) => `<div data-r="${role}" data-i="${i}"><span>${esc(e[0])}<br><span class="small">${role === 'o' ? 'platí' : 'dostáva'} · ${e[3]} zmlúv${e[2] ? '' : ' · bez miesta'}</span></span><b>${short(e[4])}</b></div>`).join('') || '<div class="small">Nič sa nenašlo (hľadá sa v najväčších subjektoch za obdobie)</div>';
+  sug.style.display = 'block';
+});
+sug.onclick = (e) => { const d = e.target.closest('[data-r]'); if (!d) return; sug.style.display = 'none'; q.blur(); goEnt(d.dataset.r, +d.dataset.i); };
+
+// ---------- štart ----------
+(async () => {
+  try {
+    S.meta = await api('meta.json'); V = S.meta.generated;
+    $('#perAll').textContent = S.meta.windowDays + ' dní';
+    const pl = await api('places.json'); S.cols = pl.cols; S.places = pl.rows;
+    if (map.loaded()) drawMap(); else map.on('load', drawMap);
+    render();
+  } catch (e) {
+    $('#body').innerHTML = `<p>Dáta zatiaľ nie sú pripravené. Prvé stiahnutie z CRZ trvá niekoľko minút.</p><p class="small">${esc(e.message)}</p>`;
+  }
+})();
+</script>
+</body>
+</html>

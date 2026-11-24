@@ -1,0 +1,13 @@
+{
+  "name": "vydavky-statu",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mapa zmlúv z Centrálneho registra zmlúv (CRZ)",
+  "scripts": {
+    "update": "node scripts/update.mjs",
+    "test": "rm -rf /tmp/td && DATA_DIR=/tmp/td FIXTURE=test/fixture.xml GEONAMES_FILE=test/SK.txt node scripts/update.mjs && node scripts/to-sql.mjs /tmp/td /tmp/td-sql",
+    "deploy": "wrangler deploy"
+  },
+  "license": "MIT"
+}

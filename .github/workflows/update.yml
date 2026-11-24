@@ -1,0 +1,77 @@
+name: Denná aktualizácia CRZ
+
+on:
+  schedule:
+    - cron: '30 3 * * *'   # 04:30 SEČ, CRZ vytvára export okolo 02:00
+  workflow_dispatch:
+    inputs:
+      window_days:
+        description: 'Koľko dní dozadu držať detail zmlúv'
+        default: '60'
+      reset:
+        description: 'Zmazať uložený stav a stiahnuť všetko znova (true/false)'
+        default: 'false'
+  push:
+    branches: [main]
+    paths: ['scripts/**', '.github/workflows/update.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: crz-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Načítať predchádzajúce dáta (vetva data)
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin data; then
+            git --work-tree=data checkout FETCH_HEAD -- .
+            git reset -q
+          fi
+          if [ "${{ inputs.reset }}" = "true" ]; then rm -rf data/state data/api; fi
+          ls -la data || true
+
+      - name: Stiahnuť CRZ a vygenerovať dáta
+        env:
+          DATA_DIR: data
+          WINDOW_DAYS: ${{ inputs.window_days || vars.WINDOW_DAYS || '60' }}
+          # platená verzia: nastav premennú repozitára HISTORY_FROM=2011-01-01
+          HISTORY_FROM: ${{ vars.D1_DATABASE && vars.HISTORY_FROM || '' }}
+        run: node scripts/update.mjs
+
+      # ---- Platená verzia: zapne sa sama, keď v Settings → Variables nastavíš D1_DATABASE
+      #      a v Settings → Secrets pridáš CLOUDFLARE_API_TOKEN a CLOUDFLARE_ACCOUNT_ID ----
+      - name: Import do D1 (len platená verzia)
+        if: ${{ vars.D1_DATABASE != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          node scripts/to-sql.mjs data sql
+          for f in sql/*.sql; do npx -y wrangler@4 d1 execute "${{ vars.D1_DATABASE }}" --remote --yes --file="$f"; done
+
+      - name: Publikovať do vetvy data
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd data
+          cp ../upgrade/DATA_BRANCH_README.md README.md
+          git init -q -b data
+          git config user.name "crz-bot"
+          git config user.email "crz-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Dáta CRZ $(date -u +%F)"
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data:data
+          echo "Hotovo: $(du -sh . | cut -f1)"
