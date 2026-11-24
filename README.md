@@ -26,7 +26,7 @@ Cloudflare: statické súbory (public/ + api/) – zadarmo, bez limitu požiadav
 - **Záloha:** kým nie je nastavený secret `CLOUDFLARE_API_TOKEN`, Worker číta stránku aj dáta priamo z GitHubu (limit 100 000 požiadaviek denne).
 
 ### Jednorazové nastavenie nasadenia
-1. Cloudflare → My Profile → API Tokens → Create Token → šablóna **Edit Cloudflare Workers** → pridať riadok *Account · D1 · Edit* → účet *Janko.koterba* → Create.
+1. Cloudflare → My Profile → API Tokens → Create Token → šablóna **Edit Cloudflare Workers** → pridať riadok *Account · D1 · Edit* → vyber svoj účet → Create.
 2. GitHub repo → Settings → Secrets and variables → Actions → New repository secret: `CLOUDFLARE_API_TOKEN` = token.
 3. Actions → „Nasadenie na Cloudflare“ → Run workflow.
 
