@@ -8,7 +8,7 @@ on:
     inputs:
       window_days:
         description: 'Koľko dní dozadu držať detail zmlúv'
-        default: '60'
+        default: '365'
       reset:
         description: 'Zmazať uložený stav a stiahnuť všetko znova (true/false)'
         default: 'false'
@@ -49,7 +49,9 @@ jobs:
       - name: Stiahnuť CRZ a vygenerovať dáta
         env:
           DATA_DIR: data
-          WINDOW_DAYS: ${{ inputs.window_days || vars.WINDOW_DAYS || '60' }}
+          WINDOW_DAYS: ${{ inputs.window_days || vars.WINDOW_DAYS || '365' }}
+          WRITE_CHANGES: ${{ vars.D1_DATABASE }}
+          NODE_OPTIONS: --max-old-space-size=6144
           # platená verzia: nastav premennú repozitára HISTORY_FROM=2011-01-01
           HISTORY_FROM: ${{ vars.D1_DATABASE && vars.HISTORY_FROM || '' }}
         run: node scripts/update.mjs

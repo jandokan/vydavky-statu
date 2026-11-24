@@ -4,7 +4,7 @@
 //   node scripts/update.mjs
 // Premenné prostredia:
 //   DATA_DIR      priečinok s dátami (vetva "data"), predvolene ./data
-//   WINDOW_DAYS   koľko dní dozadu držať detail zmlúv (Free verzia), predvolene 60
+//   WINDOW_DAYS   koľko dní dozadu držať detail zmlúv (Free verzia), predvolene 365
 //   PLACE_CAP     max. zmlúv na jedno miesto a rolu v detailnom súbore, predvolene 1500
 //   MAX_DAYS      max. počet dní stiahnutých v jednom behu, predvolene 400
 //   FIXTURE       lokálny XML súbor namiesto sťahovania (test)
@@ -20,7 +20,7 @@ import { parseExport, amount, isActive } from './parse.mjs';
 import { loadGeoNames, makeGeocoder, norm } from './geo.mjs';
 
 const DATA = path.resolve(process.env.DATA_DIR || 'data');
-const WINDOW = +(process.env.WINDOW_DAYS || 60);
+const WINDOW = +(process.env.WINDOW_DAYS || 365);
 const CAP = +(process.env.PLACE_CAP || 1500);
 const MAX_DAYS = +(process.env.MAX_DAYS || 400);
 const UA = 'vydavky-statu (open-data mapa CRZ; github.com/jandokan/vydavky-statu)';
@@ -54,11 +54,16 @@ async function get(url, tries = 2) {
 
 // ---------- stav ----------
 fs.mkdirSync(STATE, { recursive: true });
-const recFile = path.join(STATE, 'records.ndjson.gz');
+// zmluvy sú uložené po mesiacoch (state/records/RRRR-MM.ndjson.gz), aby žiadny súbor neprekročil limit GitHubu 100 MB
+const REC_DIR = path.join(STATE, 'records');
+const legacyRec = path.join(STATE, 'records.ndjson.gz');
 const records = new Map();
-if (fs.existsSync(recFile)) {
-  for (const line of zlib.gunzipSync(fs.readFileSync(recFile)).toString('utf8').split('\n')) if (line) { const r = JSON.parse(line); records.set(r.id, r); }
+const recFiles = [legacyRec, ...(fs.existsSync(REC_DIR) ? fs.readdirSync(REC_DIR).map((f) => path.join(REC_DIR, f)) : [])];
+for (const f of recFiles) {
+  if (!fs.existsSync(f) || !f.endsWith('.ndjson.gz')) continue;
+  for (const line of zlib.gunzipSync(fs.readFileSync(f)).toString('utf8').split('\n')) if (line) { const r = JSON.parse(line); records.set(r.id, r); }
 }
+const monthly = readJson(path.join(STATE, 'monthly.json'), {}); // trvalé mesačné súhrny
 const state = readJson(path.join(STATE, 'state.json'), { days: {} });
 const daily = readJson(path.join(STATE, 'daily.json'), {});
 console.log(`Stav: ${records.size} zmlúv, ${Object.keys(state.days).length} spracovaných dní`);
@@ -187,9 +192,51 @@ for (const r of records.values()) {
   }
 }
 
+const round = (x) => Math.round(x * 100) / 100;
+
+// ---------- trvalé mesačné súhrny ----------
+// Mesiac sa prepočítava, kým celý leží v okne; keď z okna začne vypadávať, zmrazí sa a ostane navždy.
+{
+  const fresh = {};
+  for (const r of records.values()) {
+    if (!isActive(r)) continue;
+    const m = r.zverejnene.slice(0, 7);
+    if (monthly[m] && `${m}-01` < windowStart) continue; // zmrazený mesiac
+    const M = fresh[m] || (fresh[m] = { p: {}, e: {}, n: 0, s: 0 });
+    const a = amount(r); M.n++; M.s += a;
+    for (const role of ['o', 'd']) {
+      const key = r['miesto_' + role];
+      if (key) { const x = M.p[key] || (M.p[key] = [0, 0, 0, 0]); const i = role === 'o' ? 0 : 2; x[i]++; x[i + 1] += a; }
+      const name = role === 'o' ? r.objednavatel : r.dodavatel, ico = role === 'o' ? r.objednavatel_ico : r.dodavatel_ico;
+      if (name) { const ek = role + ':' + (ico || norm(name)); const e = M.e[ek] || (M.e[ek] = [name, ico, key || null, 0, 0]); e[3]++; e[4] += a; if (!e[2] && key) e[2] = key; }
+    }
+  }
+  for (const [m, M] of Object.entries(fresh)) {
+    for (const x of Object.values(M.p)) { x[1] = round(x[1]); x[3] = round(x[3]); }
+    // na mesiac držíme 4000 najväčších subjektov z každej strany (súbor nesmie rásť donekonečna)
+    const keep = {};
+    for (const role of ['o', 'd']) Object.entries(M.e).filter(([k]) => k[0] === role).sort((a, b) => b[1][4] - a[1][4]).slice(0, 4000).forEach(([k, v]) => { v[4] = round(v[4]); keep[k] = v; });
+    monthly[m] = { p: M.p, e: keep, n: M.n, s: round(M.s) };
+  }
+}
+const ever = new Map(); // miesto → [on, os, dn, ds] od začiatku
+const everEnt = new Map();
+for (const M of Object.values(monthly)) {
+  for (const [k, x] of Object.entries(M.p)) { const t = ever.get(k) || [0, 0, 0, 0]; for (let i = 0; i < 4; i++) t[i] += x[i]; ever.set(k, t); }
+  for (const [k, e] of Object.entries(M.e)) { const t = everEnt.get(k) || [e[0], e[1], e[2], 0, 0]; t[3] += e[3]; t[4] += e[4]; if (!t[2]) t[2] = e[2]; everEnt.set(k, t); }
+}
+const firstMonth = Object.keys(monthly).sort()[0] || null;
+
 const PCOLS = ['key', 'name', 'okres', 'kraj', 'lat', 'lon'];
 const MCOLS = []; for (const role of ['o', 'd']) for (const [k] of periods) MCOLS.push(`${role}${k}n`, `${role}${k}s`);
-const round = (x) => Math.round(x * 100) / 100;
+MCOLS.push('oevern', 'oevers', 'devern', 'devers');
+for (const [k, t] of ever) {
+  if (!placeByKey.has(k)) continue;
+  let pl = places.get(k); if (!pl) places.set(k, (pl = { key: k, o: [], d: [], empty: true }));
+  pl.oevern = t[0]; pl.oevers = t[1]; pl.devern = t[2]; pl.devers = t[3];
+  const g = placeByKey.get(k); let o = okresy.get(g.okres); if (!o) okresy.set(g.okres, (o = { okres: g.okres, kraj: g.kraj }));
+  o.oevern = (o.oevern || 0) + t[0]; o.oevers = (o.oevers || 0) + t[1]; o.devern = (o.devern || 0) + t[2]; o.devers = (o.devers || 0) + t[3];
+}
 const placeRows = [];
 for (const pl of places.values()) {
   const g = placeByKey.get(pl.key);
@@ -210,6 +257,9 @@ writeJson(path.join(API, 'top.json'), { fields: FIELDS, '7': top(d7), '30': top(
 const entRows = [...ents.values()].sort((a, b) => b.s - a.s);
 const topEnt = (role) => entRows.filter((e) => e.role === role).slice(0, 15000).map((e) => [e.name, e.ico, e.place, e.n, round(e.s)]);
 writeJson(path.join(API, 'names.json'), { cols: ['name', 'ico', 'place', 'n', 's'], o: topEnt('o'), d: topEnt('d') });
+const everRows = [...everEnt.entries()].sort((a, b) => b[1][4] - a[1][4]);
+const topEver = (role) => everRows.filter(([k]) => k[0] === role).slice(0, 15000).map(([, e]) => [e[0], e[1], e[2], e[3], round(e[4])]);
+writeJson(path.join(API, 'names-ever.json'), { cols: ['name', 'ico', 'place', 'n', 's'], from: firstMonth, o: topEver('o'), d: topEver('d') });
 
 // denné súčty: dni v okne prepočítame, staršie zostávajú v histórii natrvalo
 for (const d of Object.keys(daily)) if (d >= windowStart) delete daily[d];
@@ -223,7 +273,7 @@ const lastDay = Object.keys(state.days).filter((d) => state.days[d].n != null &&
 const meta = {
   generated: new Date().toISOString(), lastDay, windowDays: WINDOW, windowStart, placeCap: CAP,
   contracts: records.size, active: all.length, pendingDays, failedDays, places: places.size, changesThisRun: newCount, geocoding: geoStats,
-  periods: { '7': d7, '30': d30, all: windowStart }, plan: 'free',
+  periods: { '7': d7, '30': d30, all: windowStart }, everFrom: firstMonth ? firstMonth + '-01' : null, plan: 'free',
   sources: [
     { name: 'Centrálny register zmlúv, Úrad vlády SR', url: 'https://www.crz.gov.sk/', license: 'CC BY 4.0' },
     { name: 'GeoNames – PSČ Slovenska', url: 'https://www.geonames.org/', license: 'CC BY 4.0' },
@@ -232,8 +282,15 @@ const meta = {
 writeJson(path.join(API, 'meta.json'), meta);
 
 // ---------- uloženie stavu ----------
-fs.writeFileSync(recFile, zlib.gzipSync([...records.values()].map((r) => JSON.stringify(r)).join('\n')));
-fs.writeFileSync(path.join(STATE, 'changes.ndjson.gz'), zlib.gzipSync([...changed.values()].map((r) => JSON.stringify(r)).join('\n')));
+fs.rmSync(legacyRec, { force: true });
+fs.rmSync(REC_DIR, { recursive: true, force: true }); fs.mkdirSync(REC_DIR, { recursive: true });
+const byMonth = {};
+for (const r of records.values()) (byMonth[r.zverejnene.slice(0, 7)] ||= []).push(JSON.stringify(r));
+for (const [m, lines] of Object.entries(byMonth)) fs.writeFileSync(path.join(REC_DIR, m + '.ndjson.gz'), zlib.gzipSync(lines.join('\n')));
+writeJson(path.join(STATE, 'monthly.json'), monthly);
+fs.rmSync(path.join(STATE, 'changes.ndjson.gz'), { force: true });
+// zmeny pre import do D1 – len keď je zapnutá platená verzia (inak by pri dosťahovaní roka vznikol obrovský súbor)
+if (process.env.WRITE_CHANGES) fs.writeFileSync(path.join(STATE, 'changes.ndjson.gz'), zlib.gzipSync([...changed.values()].map((r) => JSON.stringify(r)).join('\n')));
 writeJson(path.join(STATE, 'state.json'), state);
 writeJson(path.join(STATE, 'daily.json'), daily);
 writeJson(path.join(STATE, 'unmatched.json'), [...unmatched].sort((a, b) => b[1] - a[1]).slice(0, 500));

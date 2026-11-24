@@ -1,17 +1,18 @@
 {
-  // Cloudflare Worker + statické súbory. Nasadzuje GitHub Actions (deploy.yml / update.yml).
-  // Statické súbory (stránka + dáta v site/) sú na Cloudflare zadarmo a bez limitu požiadaviek.
-  // Worker sa spúšťa len pre /api/search, /api/zmluva/*, /api/plan a pre súbory, ktoré v site/ chýbajú.
+  // Čisto statická stránka (stránka + dáta v site/) – nespúšťa žiadny Worker kód,
+  // takže nespotrebúva denný limit 100 000 požiadaviek účtu (ten zdieľa Rozklad dlažby).
+  // Statické súbory sú na Cloudflare zadarmo a bez limitu.
   "name": "vydavky-statu",
-  "main": "worker/index.js",
   "compatibility_date": "2025-09-01",
   "account_id": "c056bb00714059f0803d5261920db923",
   "workers_dev": true,
-  "vars": { "GH_REPO": "jandokan/vydavky-statu" },
   "assets": {
     "directory": "./site",
-    "run_worker_first": ["/api/search", "/api/zmluva/*", "/api/plan"]
+    "not_found_handling": "404-page"
   }
-  // Platená verzia – odkomentuj po vytvorení D1 databázy (ID nájdeš v Cloudflare → D1):
+  // Platená verzia (vyhľadávanie v D1) – pridaj späť Worker kód a databázu:
+  // ,"main": "worker/index.js"
+  // ,"vars": { "GH_REPO": "jandokan/vydavky-statu" }
+  // ,"assets": { "directory": "./site", "run_worker_first": ["/api/search", "/api/zmluva/*", "/api/plan"] }
   // ,"d1_databases": [{ "binding": "DB", "database_name": "vydavky-statu", "database_id": "<ID>" }]
 }

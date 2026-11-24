@@ -223,7 +223,7 @@ body.fs .no-fs{display:none}
     <div class="sub" id="tSub">Načítavam dáta…</div>
   </div>
   <div class="chips" id="per" role="group" aria-label="Obdobie">
-    <button class="chip" data-v="7">7 dní</button><button class="chip on" data-v="30">30 dní</button><button class="chip" data-v="all" id="perAll">60 dní</button>
+    <button class="chip" data-v="7">7 dní</button><button class="chip on" data-v="30">30 dní</button><button class="chip" data-v="all" id="perAll">1 rok</button><button class="chip" data-v="ever">Od začiatku</button>
     <span class="sep"></span>
     <button class="chip on" data-m="s">Suma</button><button class="chip" data-m="n">Počet</button>
   </div>
@@ -273,6 +273,8 @@ const LABEL = {
   obstaravanie: 'Verejné obstarávanie', potvrdenie: 'Potvrdenie o zverejnení', potvrdenie_datum: 'Dátum potvrdenia', zmeny: 'Záznam zmien',
 };
 const COLOR = { o: '#2747E6', d: '#D21F66' };
+const KRAJ = { Bratislava: 'Bratislavský', Trnava: 'Trnavský', Trencin: 'Trenčiansky', Nitra: 'Nitriansky', Zilina: 'Žilinský', 'Banska Bystrica': 'Banskobystrický', Presov: 'Prešovský', Kosice: 'Košický' };
+const where = (P) => [P.okres ? 'okres ' + P.okres : '', P.kraj ? (KRAJ[P.kraj] || P.kraj) + ' kraj' : ''].filter(Boolean).join(', ');
 const desktop = () => matchMedia('(min-width:900px)').matches;
 let V = '';
 const api = (f) => fetch('/api/' + f + (V ? '?v=' + encodeURIComponent(V) : '')).then((r) => { if (!r.ok) throw new Error(f + ': ' + r.status); return r.json(); });
@@ -384,8 +386,11 @@ function contractRow(f, r) {
 $('#body').addEventListener('click', (e) => { if (e.target.closest('a,button,dd')) return; const r = e.target.closest('.row'); if (r) { r.classList.toggle('open'); r.setAttribute('aria-expanded', r.classList.contains('open')); } });
 $('#body').addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('row')) { e.preventDefault(); e.target.click(); } });
 
-const perName = () => S.per === 'all' ? `${S.meta.windowDays} dní` : `${S.per} dní`;
-const inPeriod = (f, r) => (r[f.indexOf('zverejnene')] || '').slice(0, 10) >= S.meta.periods[S.per];
+const winName = () => S.meta.windowDays >= 365 ? 'posledný rok' : `${S.meta.windowDays} dní`;
+// text obdobia: „za 7 dní“, „za posledný rok“, „od 1. 11. 2025“
+const perName = () => S.per === 'ever' ? `od ${fdate(S.meta.everFrom || S.meta.windowStart)}` : 'za ' + (S.per === 'all' ? winName() : `${S.per} dní`);
+const detPer = () => (S.per === 'ever' ? 'all' : S.per); // detail zmlúv máme len v okne
+const inPeriod = (f, r) => (r[f.indexOf('zverejnene')] || '').slice(0, 10) >= S.meta.periods[detPer()];
 const more = (n) => n > S.shown ? `<button class="btn sec" data-more>Zobraziť ďalšie (${intf.format(n - S.shown)})</button>` : '';
 $('#body').addEventListener('click', (e) => { if (e.target.closest('[data-more]')) { S.shown += 40; render(); } });
 
@@ -399,7 +404,7 @@ function renderPlace() {
   const sum = list.reduce((a, r) => a + (r[iS] === 4 || r[iS] === 5 ? 0 : amt(r)), 0);
   const total = S.placeRole === 'o' ? P.oTotal : P.dTotal;
   const no = P.o.filter((r) => inPeriod(f, r)).length, nd = P.d.filter((r) => inPeriod(f, r)).length;
-  return `<div class="place-h"><div><h2>${esc(P.name)}</h2><p>okres ${esc(P.okres)}, ${esc(P.kraj)} kraj · ${perName()}</p></div>
+  return `<div class="place-h"><div><h2>${esc(P.name)}</h2><p>${esc(where(P))} · zmluvy ${S.per === 'ever' ? 'za ' + winName() : perName()}</p></div>
       <button class="x" data-close aria-label="Zavrieť miesto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
     <div class="seg" id="prole"><button data-v="o" class="${S.placeRole === 'o' ? 'on' : ''}">Platia odtiaľto · ${no}</button><button data-v="d" class="${S.placeRole === 'd' ? 'on' : ''}">Dostávajú sem · ${nd}</button></div>
     ${S.filter ? `<div class="filter"><span>${esc(S.filter)}</span><button data-unfilter>Zobraziť všetkých</button></div>` : ''}
@@ -416,19 +421,23 @@ $('#body').addEventListener('click', (e) => {
 
 function renderTop() {
   if (!S.top) { api('top.json').then((t) => { S.top = t; render(); }); return '<p class="empty">Načítavam…</p>'; }
-  const rows = S.top[S.per];
-  return `<p class="lead">Najväčšie zmluvy zverejnené za ${perName()}, podľa sumy vrátane dodatkov.</p>` + rows.slice(0, S.shown).map((r) => contractRow(S.top.fields, r)).join('') + more(rows.length);
+  const rows = S.top[detPer()];
+  return `<p class="lead">Najväčšie zmluvy zverejnené ${S.per === 'ever' ? 'za ' + winName() : perName()}, podľa sumy vrátane dodatkov.</p>` + rows.slice(0, S.shown).map((r) => contractRow(S.top.fields, r)).join('') + more(rows.length);
 }
 
 async function loadNames() { if (!S.names) S.names = await api('names.json'); return S.names; }
+async function loadEver() { if (!S.namesEver) S.namesEver = await api('names-ever.json'); return S.namesEver; }
 function renderEnts() {
-  if (!S.names) { loadNames().then(render); return '<p class="empty">Načítavam…</p>'; }
-  const list = S.names[S.role].slice(0, S.shown), mx = list[0]?.[4] || 1;
-  return `<p class="lead">${S.role === 'o' ? 'Kto zaplatil' : 'Kto dostal'} najviac za ${S.meta.windowDays} dní. Ťukni a ukáže sa na mape.</p>`
-    + list.map((e, i) => `<button class="rank" data-ent="${S.role}:${i}"><div class="n"><b>${esc(e[0])}</b><small>${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}</small><div class="bar" style="width:${Math.max(2, (e[4] / mx) * 100)}%"></div></div><div class="amt">${short(e[4])}</div></button>`).join('')
-    + more(Math.min(S.names[S.role].length, 1000));
+  const ev = S.per === 'ever';
+  if (ev && !S.namesEver) { loadEver().then(render, () => { S.namesEver = S.names || { o: [], d: [] }; render(); }); return '<p class="empty">Načítavam…</p>'; }
+  if (!ev && !S.names) { loadNames().then(render); return '<p class="empty">Načítavam…</p>'; }
+  const src = ev ? S.namesEver : S.names, pre = ev ? 'e' : '';
+  const list = src[S.role].slice(0, S.shown), mx = list[0]?.[4] || 1;
+  return `<p class="lead">${S.role === 'o' ? 'Kto zaplatil' : 'Kto dostal'} najviac ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa na mape.</p>`
+    + list.map((e, i) => `<button class="rank" data-ent="${pre}${S.role}:${i}"><div class="n"><b>${esc(e[0])}</b><small>${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}</small><div class="bar" style="width:${Math.max(2, (e[4] / mx) * 100)}%"></div></div><div class="amt">${short(e[4])}</div></button>`).join('')
+    + more(Math.min(src[S.role].length, 1000));
 }
-window.goEnt = (role, i) => { const e = S.names[role][i]; closeSearch(); if (!e[2]) { alert('Sídlo tohto subjektu sa nepodarilo umiestniť na mapu.'); return; } setRole(role); openPlace(e[2], e[0], role); };
+window.goEnt = (role, i) => { const ev = role[0] === 'e'; if (ev) role = role.slice(1); const e = (ev ? S.namesEver : S.names)[role][i]; closeSearch(); if (!e[2]) { alert('Sídlo tohto subjektu sa nepodarilo umiestniť na mapu.'); return; } setRole(role); openPlace(e[2], e[0], role); };
 
 function renderChart() {
   if (!S.daily) { api('daily.json').then((d) => { S.daily = d; render(); }); return '<p class="empty">Načítavam…</p>'; }
@@ -456,7 +465,7 @@ function renderAbout() {
   <li>Krúžok na mape je sídlo zmluvnej strany, nie miesto, kde sa práca robí. Preto je najviac peňazí v Bratislave.</li>
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
   <li>„Kto platí“ je zmluvná strana 1, „kto dostáva“ strana 2, presne ako v registri.</li></ul>
-  <p class="lead">Obdobie ${m.windowDays} dní začína ${fdate(m.windowStart)}. Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries. Fyzické osoby väčšinou adresu nemajú.</p>
+  <p class="lead">Detail zmlúv držíme za ${winName()} (od ${fdate(m.windowStart)}). Súčty „Od začiatku“ sa ukladajú natrvalo${m.everFrom ? ' od ' + fdate(m.everFrom) : ''} a stále pribúdajú. Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries. Fyzické osoby väčšinou adresu nemajú.</p>
   <h3>Zdroje</h3>
   <ul>${m.sources.map((s) => `<li><a href="${s.url}" target="_blank">${esc(s.name)}</a>, licencia ${esc(s.license)}</li>`).join('')}<li>Mapa © <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> a prispievatelia OpenStreetMap</li>
   <li>Zdrojový kód: <a href="https://github.com/jandokan/vydavky-statu" target="_blank">GitHub</a></li></ul>
@@ -468,7 +477,7 @@ function renderHead() {
   const iN = S.cols.indexOf(`${S.role}${S.per}n`), iS = S.cols.indexOf(`${S.role}${S.per}s`);
   let s = 0, n = 0; for (const r of S.places) { s += r[iS]; n += r[iN]; }
   $('#tSum').textContent = short(s); $('#tCnt').textContent = intf.format(n);
-  $('#tSub').textContent = `${S.role === 'o' ? 'zaplatili úrady a organizácie' : 'dostali dodávatelia'} za ${perName()} · ${intf.format(S.places.filter((r) => r[iN]).length)} miest`;
+  $('#tSub').textContent = `${S.role === 'o' ? 'zaplatili úrady a organizácie' : 'dostali dodávatelia'} ${perName()} · ${intf.format(S.places.filter((r) => r[iN]).length)} miest`;
 }
 function render() {
   renderHead();
@@ -528,8 +537,9 @@ setSnap(0);
 (async () => {
   try {
     S.meta = await api('meta.json'); V = S.meta.generated;
-    $('#perAll').textContent = S.meta.windowDays + ' dní';
+    $('#perAll').textContent = S.meta.windowDays >= 365 ? '1 rok' : S.meta.windowDays + ' dní';
     const pl = await api('places.json'); S.cols = pl.cols; S.places = pl.rows;
+    if (!S.cols.includes('oevern')) document.querySelector('#per [data-v=ever]').hidden = true; // staršie dáta bez súhrnov
     if (map.loaded()) drawMap(); else map.on('load', drawMap);
     render();
   } catch (e) {

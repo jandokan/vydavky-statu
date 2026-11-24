@@ -17,13 +17,14 @@ scripts/update.mjs  → stiahne nové dni, rozparsuje XML, geokóduje podľa PS�
 vetva "data"  (api/*.json + state/)
         │
         ▼  wrangler deploy (v tom istom workflow)
-Cloudflare: statické súbory (public/ + api/) – zadarmo, bez limitu požiadaviek
-            + Worker (worker/index.js) len pre /api/search, /api/zmluva/*, /api/plan
+Cloudflare: čisto statické súbory (public/ + api/) – zadarmo, bez limitu požiadaviek
 ```
+
+Stránka nespúšťa žiadny Worker kód, takže **nespotrebúva denný limit 100 000 požiadaviek účtu**,
+ktorý zdieľajú ostatné aplikácie na tom istom Cloudflare účte.
 
 - **Zmena vzhľadu/funkcií mapy** = úprava `public/index.html` a push do `main` → workflow „Nasadenie na Cloudflare“ ju nasadí s aktuálnymi dátami (cca 1 minúta).
 - **Ručné spustenie** sťahovania: GitHub → Actions → „Denná aktualizácia CRZ“ → Run workflow.
-- **Záloha:** kým nie je nastavený secret `CLOUDFLARE_API_TOKEN`, Worker číta stránku aj dáta priamo z GitHubu (limit 100 000 požiadaviek denne).
 
 ### Jednorazové nastavenie nasadenia
 1. Cloudflare → My Profile → API Tokens → Create Token → šablóna **Edit Cloudflare Workers** → pridať riadok *Account · D1 · Edit* → vyber svoj účet → Create.
@@ -33,7 +34,8 @@ Cloudflare: statické súbory (public/ + api/) – zadarmo, bez limitu požiadav
 ### Limity Free verzie
 | Čo | Limit | Prečo |
 |---|---|---|
-| Detail zmlúv | posledných 60 dní (`WINDOW_DAYS`) | statické súbory v Gite musia byť malé |
+| Detail zmlúv | posledných 365 dní (`WINDOW_DAYS`) | stav je rozdelený po mesiacoch (limit GitHubu 100 MB/súbor) |
+| Súčty „Od začiatku“ | natrvalo, po mesiacoch | `state/monthly.json`, miesta + 4 000 najväčších subjektov na mesiac |
 | Zmlúv na jedno miesto | 1 500 najväčších (`PLACE_CAP`) | veľkosť súboru pre mobil |
 | Denné súčty (graf) | rastú natrvalo | ukladajú sa v `state/daily.json` |
 | Vyhľadávanie | len medzi najväčšími subjektmi v okne | bez databázy |
@@ -61,8 +63,8 @@ Kód je pripravený, stačí zapnúť:
 
 1. Cloudflare → Workers & Pages → **Plans** → Workers Paid.
 2. Vytvor D1 databázu `vydavky-statu` (dashboard → D1 → Create) a spusti v jej konzole obsah `upgrade/schema.sql`.
-3. (Väzba `DB` sa nastaví cez `wrangler.jsonc`, krok 4.) Worker tým sám zapne `/api/search` a `/api/zmluva/:id`.
-4. V `wrangler.jsonc` odkomentuj `d1_databases` a doplň ID databázy (inak by ďalšie nasadenie väzbu DB zmazalo).
+3. V `wrangler.jsonc` odkomentuj `main`, `vars`, `assets` s `run_worker_first` a `d1_databases` (doplň ID databázy). Worker tým zapne `/api/search` a `/api/zmluva/:id`.
+4. Pozor: Worker potom spotrebúva denný limit účtu (Paid: 10 mil./mes. v cene).
 5. GitHub repo → Settings → Secrets and variables → Actions → Variables:
    `D1_DATABASE` = `vydavky-statu`, `HISTORY_FROM` = `2011-01-01`, voliteľne `WINDOW_DAYS` = `180`
    (token `CLOUDFLARE_API_TOKEN` už máš z nastavenia nasadenia, s oprávnením D1 Edit)
