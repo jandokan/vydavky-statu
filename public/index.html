@@ -17,7 +17,7 @@
   --paper:#F3F5FA; --card:#FFFFFF; --ink:#16213E; --mut:#5D6680; --line:#DDE3EF; --soft:#E9EDF5;
   --o:#2747E6; --o-soft:#E6EBFF; --d:#D21F66; --d-soft:#FCE4EE; --gold:#F5C518;
   --acc:var(--o); --acc-soft:var(--o-soft);
-  --panel:440px; --peek:250px;
+  --panel:440px; --peek:292px;
   --f:'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --shadow:0 10px 30px -12px rgba(22,33,62,.35);
 }
@@ -64,6 +64,13 @@ body.sheet-full #mapBtns{opacity:0;pointer-events:none}
 .grab{display:flex;justify-content:center;padding:10px 0 4px;cursor:grab}
 .grab i{width:44px;height:5px;border-radius:3px;background:var(--line)}
 .head{padding:2px 18px 10px;touch-action:none}
+.scope{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;min-height:40px}
+.scope .lbl{display:flex;align-items:center;gap:9px;min-width:0;font-weight:750;font-size:17px;color:var(--ink)}
+.scope .lbl svg{flex-shrink:0;color:var(--mut)}
+.scope .lbl.here svg{color:var(--ink);background:var(--gold);border-radius:50%;padding:3px;width:26px;height:26px}
+.scope .lbl>span{min-width:0;line-height:1.15}
+.scope .lbl small{display:block;font-weight:500;font-size:13px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scope .back{display:flex;align-items:center;gap:6px;border:0;background:var(--ink);color:#fff;border-radius:12px;min-height:40px;padding:0 13px;font-weight:700;font-size:14px;white-space:nowrap;flex-shrink:0}
 .total{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .total .big{font-size:38px;font-weight:800;letter-spacing:-.025em;line-height:1;font-stretch:80%;color:var(--acc)}
 .total .cnt{font-size:15px;color:var(--mut);text-align:right;line-height:1.2}
@@ -219,6 +226,7 @@ body.fs .no-fs{display:none}
   </div>
   <div class="grab" id="grab" aria-hidden="true"><i></i></div>
   <div class="head" id="head">
+    <div class="scope" id="scope"></div>
     <div class="total"><div class="big num" id="tSum">–</div><div class="cnt"><b class="num" id="tCnt">–</b>zmlúv</div></div>
     <div class="sub" id="tSub">Načítavam dáta…</div>
   </div>
@@ -228,8 +236,7 @@ body.fs .no-fs{display:none}
     <button class="chip on" data-m="s">Suma</button><button class="chip" data-m="n">Počet</button>
   </div>
   <nav class="tabs" id="tabs">
-    <button data-t="place">Miesto</button>
-    <button data-t="top" class="on">Najväčšie zmluvy</button>
+    <button data-t="list" class="on">Zmluvy</button>
     <button data-t="ents">Rebríček</button>
     <button data-t="chart">Vývoj</button>
     <button data-t="about">O dátach</button>
@@ -250,7 +257,7 @@ body.fs .no-fs{display:none}
 
 <script>
 'use strict';
-const S = { role: 'o', per: '30', met: 's', tab: 'top', meta: null, places: null, cols: null, place: null, placeRole: 'o', filter: '', names: null, top: null, daily: null, shown: 40 };
+const S = { role: 'o', per: '30', met: 's', tab: 'list', sort: 'amt', pidx: null, meta: null, places: null, cols: null, place: null, filter: '', names: null, top: null, daily: null, shown: 40 };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const eur = new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
@@ -290,7 +297,7 @@ map.touchZoomRotate.disableRotation();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 function pad() {
   if (document.body.classList.contains('fs')) return { top: 80, bottom: 30, left: 20, right: 20 };
-  return desktop() ? { top: 90, bottom: 40, left: 40, right: 80 } : { top: 80, bottom: (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--peek')) || 250) + 20, left: 16, right: 16 };
+  return desktop() ? { top: 90, bottom: 40, left: 40, right: 80 } : { top: 80, bottom: (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--peek')) || 292) + 20, left: 16, right: 16 };
 }
 const home = () => map.fitBounds(SK, { padding: pad(), duration: 700 });
 
@@ -332,7 +339,7 @@ function markSel(P) { if (map.getSource('sel')) map.getSource('sel').setData({ t
 
 // ---------- spodný panel (mobil) ----------
 const panel = $('#panel');
-const snaps = () => { const h = innerHeight; return [250, Math.round(h * 0.55), h - 82]; };
+const snaps = () => { const h = innerHeight; return [292, Math.round(h * 0.55), h - 82]; };
 let snap = 0;
 const root = document.documentElement;
 function setSnap(i) {
@@ -352,7 +359,8 @@ function setSnap(i) {
     if (Math.abs(v) > 60 && best === snap) best += v > 0 ? 1 : -1;
     setSnap(best);
   };
-  for (const el of [$('#grab'), $('#head')]) el.addEventListener('pointerdown', (e) => { el.setPointerCapture(e.pointerId); start(e); });
+  for (const el of [$('#grab'), $('#head')]) el.addEventListener('pointerdown', (e) => { if (e.target.closest('button,a')) return; // tlačidlá v hlavičke nesmú spúšťať ťahanie
+    el.setPointerCapture(e.pointerId); start(e); });
   for (const el of [$('#grab'), $('#head')]) { el.addEventListener('pointermove', move); el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); }
 })();
 addEventListener('resize', () => setSnap(snap));
@@ -399,65 +407,103 @@ const inPeriod = (f, r) => (r[f.indexOf('zverejnene')] || '').slice(0, 10) >= S.
 const more = (n) => n > S.shown ? `<button class="btn sec" data-more>Zobraziť ďalšie (${intf.format(n - S.shown)})</button>` : '';
 $('#body').addEventListener('click', (e) => { if (e.target.closest('[data-more]')) { S.shown += 40; render(); } });
 
-function renderPlace() {
-  const P = S.place;
-  if (!P) return `<p class="lead">Ťukni na krúžok na mape. Ukážu sa zmluvy subjektov so sídlom v danom mieste. Čím väčší krúžok, tým viac peňazí.</p>`;
-  const f = P.fields, iA = f.indexOf('suma_spolu'), iB = f.indexOf('suma'), iS = f.indexOf('stav'), iX = f.indexOf('nezapocitane');
-  let list = P[S.placeRole].filter((r) => inPeriod(f, r));
+// ---------- rozsah: celé Slovensko alebo vybrané miesto ----------
+const placeRow = (key) => (S.pidx ? S.pidx.get(key) : null);
+const col = (r, k) => (r ? r[S.cols.indexOf(k)] || 0 : 0);
+const scopeName = () => (S.place ? S.place.name : 'Celé Slovensko');
+function fieldIdx(f) { return { A: f.indexOf('suma_spolu'), B: f.indexOf('suma'), S: f.indexOf('stav'), X: f.indexOf('nezapocitane'), Z: f.indexOf('zverejnene'), O: f.indexOf('objednavatel'), D: f.indexOf('dodavatel') }; }
+const amtOf = (I, r) => (r[I.A] > 0 ? r[I.A] : r[I.B]) || 0;
+const skipOf = (I, r) => (I.X >= 0 ? !!r[I.X] : r[I.S] === 4 || r[I.S] === 5);
+// zmluvy vybraného miesta pre aktuálnu rolu a obdobie (+ filter podľa subjektu)
+function placeList() {
+  const P = S.place, f = P.fields;
+  let list = P[S.role].filter((r) => inPeriod(f, r));
   if (S.filter) { const q = norm(S.filter); list = list.filter((r) => norm(r.join(' ')).includes(q)); }
-  const amt = (r) => (r[iA] > 0 ? r[iA] : r[iB]) || 0;
-  const skip = (r) => (iX >= 0 ? !!r[iX] : r[iS] === 4 || r[iS] === 5);
-  const sum = list.reduce((a, r) => a + (skip(r) ? 0 : amt(r)), 0);
-  const total = S.placeRole === 'o' ? P.oTotal : P.dTotal;
-  const no = P.o.filter((r) => inPeriod(f, r)).length, nd = P.d.filter((r) => inPeriod(f, r)).length;
-  return `<div class="place-h"><div><h2>${esc(P.name)}</h2><p>${esc(where(P))} · zmluvy ${S.per === 'ever' ? 'za ' + winName() : perName()}</p></div>
-      <button class="x" data-close aria-label="Zavrieť miesto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
-    <div class="seg" id="prole"><button data-v="o" class="${S.placeRole === 'o' ? 'on' : ''}">Platia odtiaľto · ${no}</button><button data-v="d" class="${S.placeRole === 'd' ? 'on' : ''}">Dostávajú sem · ${nd}</button></div>
-    ${S.filter ? `<div class="filter"><span>${esc(S.filter)}</span><button data-unfilter>Zobraziť všetkých</button></div>` : ''}
-    <div class="kpis"><div><small>Suma</small><b class="num">${short(sum)}</b></div><div><small>Zmlúv</small><b class="num">${intf.format(list.length)}</b></div></div>
-    ${total > P.cap ? `<div class="note">Zobrazujeme ${intf.format(P.cap)} najväčších z ${intf.format(total)} zmlúv.</div>` : ''}
-    ${list.slice(0, S.shown).map((r) => contractRow(f, r)).join('') || '<p class="empty">V tomto období tu nie sú žiadne zmluvy.</p>'}${more(list.length)}`;
+  return list;
 }
-$('#body').addEventListener('click', (e) => {
-  if (e.target.closest('[data-close]')) { S.place = null; markSel(null); setTab('top'); }
-  if (e.target.closest('[data-unfilter]')) { S.filter = ''; render(); }
-  const pr = e.target.closest('#prole button'); if (pr) { S.placeRole = pr.dataset.v; S.shown = 40; render(); }
-  const en = e.target.closest('[data-ent]'); if (en) { const [role, i] = en.dataset.ent.split(':'); goEnt(role, +i); }
-});
+const capNote = () => { const P = S.place, total = S.role === 'o' ? P.oTotal : P.dTotal; return total > P.cap ? `<div class="note">Pri tomto mieste je veľa zmlúv. V zozname je ${intf.format(P.cap)} najväčších z ${intf.format(total)}, súčet hore platí pre všetky.</div>` : ''; };
+const filterChip = () => (S.filter ? `<div class="filter"><span>${esc(S.filter)}</span><button data-unfilter>Zrušiť filter</button></div>` : '');
 
-function renderTop() {
-  if (!S.top) { api('top.json').then((t) => { S.top = t; render(); }); return '<p class="empty">Načítavam…</p>'; }
-  const rows = S.top[detPer()];
-  return `<p class="lead">Najväčšie zmluvy zverejnené ${S.per === 'ever' ? 'za ' + winName() : perName()}, podľa sumy vrátane dodatkov.</p>` + rows.slice(0, S.shown).map((r) => contractRow(S.top.fields, r)).join('') + more(rows.length);
+function renderList() {
+  if (!S.place) {
+    if (!S.top) { api('top.json').then((t) => { S.top = t; render(); }); return '<p class="empty">Načítavam…</p>'; }
+    const rows = S.top[detPer()];
+    return `<p class="lead">Najväčšie zmluvy na Slovensku ${S.per === 'ever' ? 'za ' + winName() : perName()}. Ťukni na krúžok na mape a uvidíš zmluvy konkrétneho miesta.</p>` + rows.slice(0, S.shown).map((r) => contractRow(S.top.fields, r)).join('') + more(rows.length);
+  }
+  const f = S.place.fields, I = fieldIdx(f);
+  let list = placeList();
+  if (S.sort === 'date') list = [...list].sort((a, b) => (b[I.Z] || '').localeCompare(a[I.Z] || ''));
+  return `<div class="seg" id="sort"><button data-v="amt" class="${S.sort !== 'date' ? 'on' : ''}">Najväčšie</button><button data-v="date" class="${S.sort === 'date' ? 'on' : ''}">Najnovšie</button></div>
+    ${filterChip()}${S.per === 'ever' ? `<p class="lead">Zoznam zmlúv je za ${winName()}, súčet hore je od začiatku.</p>` : ''}${capNote()}
+    ${list.slice(0, S.shown).map((r) => contractRow(f, r)).join('') || `<p class="empty">${S.role === 'o' ? 'Odtiaľto nikto neplatil' : 'Sem nikto nedostal peniaze'} ${perName()}.</p>`}${more(list.length)}`;
 }
+
+$('#body').addEventListener('click', (e) => {
+  if (e.target.closest('[data-unfilter]')) { S.filter = ''; S.shown = 40; render(); }
+  const so = e.target.closest('#sort button'); if (so) { S.sort = so.dataset.v; S.shown = 40; render(); }
+  const en = e.target.closest('[data-ent]'); if (en) { const [role, i] = en.dataset.ent.split(':'); goEnt(role, +i); }
+  const pf = e.target.closest('[data-pf]'); if (pf) { S.filter = pf.dataset.pf; S.shown = 40; setTab('list'); }
+});
 
 async function loadNames() { if (!S.names) S.names = await api('names.json'); return S.names; }
 async function loadEver() { if (!S.namesEver) S.namesEver = await api('names-ever.json'); return S.namesEver; }
+const rankRow = (attrs, name, sub, val, mx) => `<button class="rank" ${attrs}><div class="n"><b>${esc(name)}</b><small>${sub}</small><div class="bar" style="width:${Math.max(2, (val / mx) * 100)}%"></div></div><div class="amt">${short(val)}</div></button>`;
 function renderEnts() {
+  if (S.place) {
+    // rebríček v rámci miesta: subjekty so sídlom tu a ich protistrany
+    const f = S.place.fields, I = fieldIdx(f), list = placeList().filter((r) => !skipOf(I, r));
+    const group = (k) => { const m = new Map(); for (const r of list) { const n = r[k] || '?'; const x = m.get(n) || [n, 0, 0]; x[1]++; x[2] += amtOf(I, r); m.set(n, x); } return [...m.values()].sort((a, b) => b[2] - a[2]); };
+    const own = group(S.role === 'o' ? I.O : I.D), other = group(S.role === 'o' ? I.D : I.O);
+    const block = (title, arr) => { const mx = arr[0]?.[2] || 1; return `<h3 style="margin:16px 0 2px;font-size:19px">${title}</h3>` + (arr.slice(0, 30).map((x) => rankRow(`data-pf="${esc(x[0])}"`, x[0], `${intf.format(x[1])} ${plural(x[1], 'zmluva', 'zmluvy', 'zmlúv')}`, x[2], mx)).join('') || '<p class="empty">Žiadne zmluvy v tomto období.</p>'); };
+    return `<p class="lead">${S.per === 'ever' ? 'Za ' + winName() : perName()[0].toUpperCase() + perName().slice(1)}. Ťukni na subjekt a uvidíš jeho zmluvy.</p>${filterChip()}`
+      + block(S.role === 'o' ? `Kto platí v mieste ${esc(S.place.name)}` : `Kto dostáva v mieste ${esc(S.place.name)}`, own)
+      + block(S.role === 'o' ? 'Komu tieto peniaze idú' : 'Od koho tieto peniaze sú', other);
+  }
   const ev = S.per === 'ever';
   if (ev && !S.namesEver) { loadEver().then(render, () => { S.namesEver = S.names || { o: [], d: [] }; render(); }); return '<p class="empty">Načítavam…</p>'; }
   if (!ev && !S.names) { loadNames().then(render); return '<p class="empty">Načítavam…</p>'; }
   const src = ev ? S.namesEver : S.names, pre = ev ? 'e' : '';
   const list = src[S.role].slice(0, S.shown), mx = list[0]?.[4] || 1;
-  return `<p class="lead">${S.role === 'o' ? 'Kto zaplatil' : 'Kto dostal'} najviac ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa na mape.</p>`
-    + list.map((e, i) => `<button class="rank" data-ent="${pre}${S.role}:${i}"><div class="n"><b>${esc(e[0])}</b><small>${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}</small><div class="bar" style="width:${Math.max(2, (e[4] / mx) * 100)}%"></div></div><div class="amt">${short(e[4])}</div></button>`).join('')
+  return `<p class="lead">${S.role === 'o' ? 'Kto na Slovensku zaplatil' : 'Kto na Slovensku dostal'} najviac ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa jeho miesto.</p>`
+    + list.map((e, i) => rankRow(`data-ent="${pre}${S.role}:${i}"`, e[0], `${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}`, e[4], mx)).join('')
     + more(Math.min(src[S.role].length, 1000));
 }
-window.goEnt = (role, i) => { const ev = role[0] === 'e'; if (ev) role = role.slice(1); const e = (ev ? S.namesEver : S.names)[role][i]; closeSearch(); if (!e[2]) { alert('Sídlo tohto subjektu sa nepodarilo umiestniť na mapu.'); return; } setRole(role); openPlace(e[2], e[0], role); };
+window.goEnt = (role, i) => { const ev = role[0] === 'e'; if (ev) role = role.slice(1); const e = (ev ? S.namesEver : S.names)[role][i]; closeSearch(); if (!e[2]) { alert('Sídlo tohto subjektu sa nepodarilo umiestniť na mapu.'); return; } setRole(role); openPlace(e[2], e[0]); };
 
-function renderChart() {
-  if (!S.daily) { api('daily.json').then((d) => { S.daily = d; render(); }); return '<p class="empty">Načítavam…</p>'; }
-  const days = Object.keys(S.daily).sort().slice(-90);
-  const vals = days.map((d) => S.daily[d][S.met]);
-  const mx = Math.max(1, ...vals), W = 720, H = 240, bw = W / days.length, top = Math.max(...vals);
-  const bars = days.map((d, i) => { const h = (vals[i] / mx) * (H - 34); const we = [0, 6].includes(new Date(d).getDay());
-    return `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - 22 - h).toFixed(1)}" width="${Math.max(1.5, bw - 2).toFixed(1)}" height="${Math.max(1, h).toFixed(1)}" rx="2" fill="${we ? '#C9D1E2' : COLOR[S.role]}"><title>${fdate(d)}: ${S.met === 's' ? eur.format(vals[i]) : vals[i] + ' zmlúv'}</title></rect>`; }).join('');
-  const ticks = days.map((d, i) => d.endsWith('-01') ? `<text x="${(i * bw).toFixed(1)}" y="${H - 4}" font-size="13" fill="#5D6680" font-family="Bricolage Grotesque">${['jan', 'feb', 'mar', 'apr', 'máj', 'jún', 'júl', 'aug', 'sep', 'okt', 'nov', 'dec'][+d.slice(5, 7) - 1]}</text>` : '').join('');
-  const tot = vals.reduce((a, b) => a + b, 0);
-  return `<p class="lead">${S.met === 's' ? 'Suma' : 'Počet'} zmlúv podľa dňa zverejnenia. Sivé sú víkendy. História sa ukladá a graf bude časom dlhší.</p>
-    <div class="kpis"><div><small>Spolu za ${days.length} dní</small><b class="num">${S.met === 's' ? short(tot) : intf.format(tot)}</b></div><div><small>Najsilnejší deň</small><b class="num">${S.met === 's' ? short(top) : intf.format(top)}</b></div></div>
-    <div id="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Denný vývoj zmlúv">${bars}${ticks}</svg></div>`;
+const MES = ['jan', 'feb', 'mar', 'apr', 'máj', 'jún', 'júl', 'aug', 'sep', 'okt', 'nov', 'dec'];
+// stĺpcový graf: keys = dni (RRRR-MM-DD) alebo mesiace (RRRR-MM)
+function barChart(keys, vals, monthly) {
+  const mx = Math.max(1, ...vals), W = 720, H = 240, bw = W / Math.max(1, keys.length);
+  const bars = keys.map((k, i) => { const h = (vals[i] / mx) * (H - 34); const we = !monthly && [0, 6].includes(new Date(k).getDay());
+    const lbl = monthly ? `${MES[+k.slice(5, 7) - 1]} ${k.slice(0, 4)}` : fdate(k);
+    return `<rect x="${(i * bw + 1).toFixed(1)}" y="${(H - 22 - h).toFixed(1)}" width="${Math.max(1.5, bw - 2).toFixed(1)}" height="${Math.max(vals[i] ? 1.5 : 0, h).toFixed(1)}" rx="2" fill="${we ? '#C9D1E2' : COLOR[S.role]}"><title>${lbl}: ${S.met === 's' ? eur.format(vals[i]) : vals[i] + ' zmlúv'}</title></rect>`; }).join('');
+  const every = monthly ? (keys.length > 14 ? 3 : 1) : 0;
+  const ticks = keys.map((k, i) => (monthly ? i % every === 0 : k.endsWith('-01') || (keys.length <= 31 && i % 7 === 0))
+    ? `<text x="${(i * bw + (monthly ? bw / 2 : 0)).toFixed(1)}" y="${H - 4}" font-size="13" fill="#5D6680" font-family="Bricolage Grotesque"${monthly ? ' text-anchor="middle"' : ''}>${monthly ? MES[+k.slice(5, 7) - 1] : k.endsWith('-01') ? MES[+k.slice(5, 7) - 1] : +k.slice(8)}</text>` : '').join('');
+  const tot = vals.reduce((a, b) => a + b, 0), top = Math.max(0, ...vals);
+  return `<div class="kpis"><div><small>Spolu</small><b class="num">${S.met === 's' ? short(tot) : intf.format(tot)}</b></div><div><small>Najsilnejší ${monthly ? 'mesiac' : 'deň'}</small><b class="num">${S.met === 's' ? short(top) : intf.format(top)}</b></div></div>
+    <div id="chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Vývoj zmlúv">${bars}${ticks}</svg></div>`;
 }
+function dayKeys(from) { const out = []; const d = new Date(from + 'T00:00:00Z'), end = new Date(); while (d < end) { out.push(d.toISOString().slice(0, 10)); d.setUTCDate(d.getUTCDate() + 1); } return out; }
+function renderChart() {
+  const monthly = S.per === 'all' || S.per === 'ever';
+  const from = S.per === 'ever' ? (S.meta.everFrom || S.meta.windowStart) : S.meta.periods[S.per];
+  const by = new Map();
+  let note;
+  if (S.place) {
+    const f = S.place.fields, I = fieldIdx(f);
+    for (const r of placeList()) { if (skipOf(I, r)) continue; const z = (r[I.Z] || '').slice(0, monthly ? 7 : 10); if (!z) continue; const x = by.get(z) || { n: 0, s: 0 }; x.n++; x.s += amtOf(I, r); by.set(z, x); }
+    note = `${S.role === 'o' ? 'Platby subjektov z miesta' : 'Peniaze pre subjekty z miesta'} ${esc(S.place.name)} podľa dátumu zverejnenia zmluvy${S.per === 'ever' ? ' (za ' + winName() + ')' : ''}.`;
+  } else {
+    if (!S.daily) { api('daily.json').then((d) => { S.daily = d; render(); }); return '<p class="empty">Načítavam…</p>'; }
+    for (const [d, v] of Object.entries(S.daily)) { if (d < from) continue; const k = monthly ? d.slice(0, 7) : d; const x = by.get(k) || { n: 0, s: 0 }; x.n += v.n; x.s += v.s; by.set(k, x); }
+    note = `Všetky zmluvy na Slovensku podľa dátumu zverejnenia, bez ohľadu na rolu.${monthly ? '' : ' Sivé sú víkendy.'}`;
+  }
+  let keys = monthly ? [...new Set(dayKeys(from).map((d) => d.slice(0, 7)))] : dayKeys(from);
+  const vals = keys.map((k) => (by.get(k) || { n: 0, s: 0 })[S.met]);
+  return `<p class="lead">${note}</p>${barChart(keys, vals, monthly)}`;
+}
+
 
 function renderAbout() {
   const m = S.meta, g = m.geocoding, tot = g.psc + g.obec + g.psc3 + g.none;
@@ -470,7 +516,7 @@ function renderAbout() {
   <div class="kpis"><div><small>Štátny rozpočet 2026 (výdavky)</small><b class="num">33,5 mld €</b></div><div><small>Celá verejná správa 2026</small><b class="num">67,9 mld €</b></div></div>
   <p class="lead">Súčty zmlúv sa s rozpočtom nedajú porovnať presne. Veľká časť rozpočtu (dôchodky, platy, sociálne dávky) sa zmluvami neplatí a naopak zmluvy obsahujú aj úvery, eurofondy či prevody medzi štátnymi organizáciami.</p>
   <h3>Ako čítať čísla</h3>
-  <ul><li>Suma je cena dohodnutá v zmluve vrátane dodatkov, nie skutočne vyplatené peniaze.</li>
+  <ul><li>Suma je cena dohodnutá v zmluve, nie skutočne vyplatené peniaze.</li>
   <li>Krúžok na mape je sídlo zmluvnej strany, nie miesto, kde sa práca robí. Preto je najviac peňazí v Bratislave.</li>
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
   <li><b>Dodatky</b> sa do súm nerátajú. Väčšinou opakujú celú sumu pôvodnej zmluvy, takže by sa tie isté peniaze zrátali viackrát. V zoznamoch ich vidíš so štítkom „dodatok“.${m.rules ? ` Za obdobie ich je ${intf.format(m.rules.amendments)}.` : ''}</li>
@@ -485,28 +531,43 @@ function renderAbout() {
   <p class="lead">Aktualizované ${new Date(m.generated).toLocaleString('sk-SK')}</p></div>`;
 }
 
+const PIN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>';
+const SKICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>';
 function renderHead() {
   if (!S.cols) return;
-  const iN = S.cols.indexOf(`${S.role}${S.per}n`), iS = S.cols.indexOf(`${S.role}${S.per}s`);
-  let s = 0, n = 0; for (const r of S.places) { s += r[iS]; n += r[iN]; }
-  $('#tSum').textContent = short(s); $('#tCnt').textContent = intf.format(n);
-  $('#tSub').textContent = `${S.role === 'o' ? 'zaplatili úrady a organizácie' : 'dostali dodávatelia'} ${perName()} · ${intf.format(S.places.filter((r) => r[iN]).length)} miest`;
+  const n = `${S.role}${S.per}n`, sm = `${S.role}${S.per}s`;
+  let sum = 0, cnt = 0, places = 0;
+  if (S.place) { const r = placeRow(S.place.key); sum = col(r, sm); cnt = col(r, n); }
+  else { const iN = S.cols.indexOf(n), iS = S.cols.indexOf(sm); for (const r of S.places) { sum += r[iS]; cnt += r[iN]; if (r[iN]) places++; } }
+  $('#scope').innerHTML = S.place
+    ? `<span class="lbl here">${PIN}<span>${esc(S.place.name)}<small>${esc(where(S.place))}</small></span></span><button class="back" id="toSK">${SKICON}Celé Slovensko</button>`
+    : `<span class="lbl">${SKICON}<span>Celé Slovensko<small>ťukni na krúžok a vyber miesto</small></span></span>`;
+  $('#tSum').textContent = short(sum); $('#tCnt').textContent = intf.format(cnt);
+  $('#tSub').textContent = S.place
+    ? `${S.role === 'o' ? 'zaplatili úrady a organizácie so sídlom tu' : 'dostali firmy a organizácie so sídlom tu'} ${perName()}`
+    : `${S.role === 'o' ? 'zaplatili úrady a organizácie' : 'dostali dodávatelia'} ${perName()} · ${intf.format(places)} miest`;
 }
+$('#scope').addEventListener('click', (e) => { if (e.target.closest('#toSK')) resetScope(); });
 function render() {
   renderHead();
-  $('#body').innerHTML = { place: renderPlace, top: renderTop, ents: renderEnts, chart: renderChart, about: renderAbout }[S.tab]();
+  $('#body').innerHTML = { list: renderList, ents: renderEnts, chart: renderChart, about: renderAbout }[S.tab]();
   if ($('#susp')) (S.susp ? Promise.resolve(S.susp) : api('suspicious.json').then((x) => (S.susp = x))).then((x) => { const el = $('#susp'); if (el) el.innerHTML = x.rows.map((r) => contractRow(x.fields, r)).join(''); }).catch(() => {});
 }
 
-async function openPlace(key, filter = '', role) {
-  setTab('place'); if (snap === 0) setSnap(1); $('#body').innerHTML = '<p class="empty">Načítavam…</p>';
+async function openPlace(key, filter = '') {
+  if (S.tab === 'about') S.tab = 'list';
+  if (snap === 0) setSnap(1);
+  $('#body').innerHTML = '<p class="empty">Načítavam…</p>';
   try {
     S.place = await api('p/' + encodeURIComponent(key) + '.json');
-    S.placeRole = role || S.role; S.filter = filter || ''; S.shown = 40;
+    S.filter = filter || ''; S.shown = 40; S.sort = 'amt';
     markSel(S.place);
-    map.easeTo({ center: [S.place.lon, S.place.lat], zoom: Math.max(map.getZoom(), 9), padding: { ...pad(), bottom: desktop() ? 40 : innerHeight * 0.5 + 20 }, duration: 600 });
-    render();
+    map.easeTo({ center: [S.place.lon, S.place.lat], zoom: Math.max(map.getZoom(), 9), padding: { ...pad(), bottom: desktop() ? 40 : innerHeight * 0.55 + 20 }, duration: 600 });
+    setTab(S.tab);
   } catch (e) { $('#body').innerHTML = `<p class="empty">Miesto sa nepodarilo načítať (${esc(e.message)}). Skús to znova.</p>`; }
+}
+function resetScope() {
+  S.place = null; S.filter = ''; S.shown = 40; markSel(null); home(); setTab(S.tab);
 }
 
 // ---------- ovládanie ----------
@@ -518,7 +579,7 @@ $('#per').onclick = (e) => {
   if (b.dataset.m) { S.met = b.dataset.m; $('#per').querySelectorAll('[data-m]').forEach((x) => x.classList.toggle('on', x === b)); }
   S.shown = 40; drawMap(); render();
 };
-$('#btnHome').onclick = home;
+$('#btnHome').onclick = () => (S.place ? resetScope() : home());
 $('#btnFs').onclick = async () => {
   const on = !document.body.classList.contains('fs');
   document.body.classList.toggle('fs', on);
@@ -552,7 +613,7 @@ setSnap(0);
   try {
     S.meta = await api('meta.json'); V = S.meta.generated;
     $('#perAll').textContent = S.meta.windowDays >= 365 ? '1 rok' : S.meta.windowDays + ' dní';
-    const pl = await api('places.json'); S.cols = pl.cols; S.places = pl.rows;
+    const pl = await api('places.json'); S.cols = pl.cols; S.places = pl.rows; S.pidx = new Map(pl.rows.map((r) => [r[0], r]));
     if (!S.cols.includes('oevern')) document.querySelector('#per [data-v=ever]').hidden = true; // staršie dáta bez súhrnov
     if (map.loaded()) drawMap(); else map.on('load', drawMap);
     render();
