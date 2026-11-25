@@ -7,11 +7,9 @@
 <meta name="description" content="Mapa verejných zmlúv: interaktívna mapa zmlúv z Centrálneho registra zmlúv. Kto zmluvy uzatvára, s kým a na akú sumu.">
 <meta name="theme-color" content="#F3F5FA">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<link rel="stylesheet" href="/vendor/fonts.css">
+<link rel="stylesheet" href="/vendor/maplibre-gl.css">
+<script src="/vendor/maplibre-gl.js"></script>
 <style>
 :root{
   --paper:#F3F5FA; --card:#FFFFFF; --ink:#16213E; --mut:#5D6680; --line:#DDE3EF; --soft:#E9EDF5;
@@ -113,6 +111,7 @@ body.sheet-full #mapBtns{opacity:0;pointer-events:none}
 .files a span{color:var(--mut);font-weight:500;white-space:nowrap}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:48px;border:0;border-radius:14px;background:var(--acc);color:#fff;font-weight:700;font-size:16px;text-decoration:none;margin-top:12px}
 .btn.sec{background:var(--soft);color:var(--ink)}
+.report{display:block;text-align:center;margin-top:10px;font-size:14px;color:var(--mut)}
 .place-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-top:8px}
 .place-h h2{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em;line-height:1.05;font-stretch:85%}
 .place-h p{margin:4px 0 0;color:var(--mut);font-size:14px}
@@ -284,6 +283,8 @@ const LABEL = {
   obstaravanie: 'Verejné obstarávanie', potvrdenie: 'Potvrdenie o zverejnení', potvrdenie_datum: 'Dátum potvrdenia', zmeny: 'Záznam zmien',
 };
 const COLOR = { o: '#2747E6', d: '#D21F66' };
+// kontaktný e-mail doplní build (premenná CONTACT_EMAIL v GitHube); ak chýba, kontakt sa skryje
+const CONTACT = (() => { const c = '__CONTACT_EMAIL__'; return c.includes('@') && !c.startsWith('__') ? c : ''; })();
 const SFX = () => (S.priv ? '_p' : ''); // prípona stĺpcov pre filter „Len súkromný sektor“
 const KRAJ = { Bratislava: 'Bratislavský', Trnava: 'Trnavský', Trencin: 'Trenčiansky', Nitra: 'Nitriansky', Zilina: 'Žilinský', 'Banska Bystrica': 'Banskobystrický', Presov: 'Prešovský', Kosice: 'Košický' };
 const where = (P) => [P.okres ? 'okres ' + P.okres : '', P.kraj ? (KRAJ[P.kraj] || P.kraj) + ' kraj' : ''].filter(Boolean).join(', ');
@@ -381,7 +382,7 @@ function contractRow(f, r) {
   // prečo sa suma nezapočítava do súčtov (staršie dáta pole nemajú → len zrušené)
   const why = o.nezapocitane !== undefined ? o.nezapocitane : dead ? 'zrušená' : null;
   const whyTag = why === 'dodatok' ? '<span class="tag">dodatok · nezapočítava sa</span>'
-    : why === 'podozrivá suma' ? '<span class="tag red">podozrivá suma · nezapočítava sa</span>'
+    : why === 'pravdepodobne chybná suma' || why === 'podozrivá suma' ? '<span class="tag red">pravdepodobne chybná suma · nezapočítava sa</span>'
     : why === 'duplicita' ? '<span class="tag">zverejnená aj druhou stranou · nezapočítava sa</span>'
     : why ? `<span class="tag red">${STAV[o.stav] || why}</span>` : '';
   const rows = f.filter((k) => LABEL[k] && o[k] != null && o[k] !== '').map((k) => {
@@ -399,7 +400,8 @@ function contractRow(f, r) {
     <div class="who"><b>${esc(o.objednavatel || '?')}</b> → <b>${esc(o.dodavatel || '?')}</b></div>
     <div class="meta">${fdate(o.zverejnene)}${whyTag}${o.typ === 2 ? '<span class="tag">informácia</span>' : ''}${o.prilohy?.length ? `<span class="tag">${o.prilohy.length} ${plural(o.prilohy.length, 'príloha', 'prílohy', 'príloh')}</span>` : ''}</div>
     <div class="det"><dl>${rows}</dl>${files ? `<div class="files">${files}</div>` : ''}
-      <a class="btn" href="https://www.crz.gov.sk/zmluva/${o.id}/" target="_blank" rel="noopener">Otvoriť v registri CRZ</a></div>
+      <a class="btn" href="https://www.crz.gov.sk/zmluva/${o.id}/" target="_blank" rel="noopener">Otvoriť v registri CRZ</a>
+      ${CONTACT ? `<a class="report" href="mailto:${CONTACT}?subject=${encodeURIComponent('Chyba pri zmluve ' + o.id)}&body=${encodeURIComponent('Zmluva: https://www.crz.gov.sk/zmluva/' + o.id + '/\n\nČo je zle:\n')}">Nahlásiť chybu pri tejto zmluve</a>` : ''}</div>
   </div>`;
 }
 $('#body').addEventListener('click', (e) => { if (e.target.closest('a,button,dd')) return; const r = e.target.closest('.row'); if (r) { r.classList.toggle('open'); r.setAttribute('aria-expanded', r.classList.contains('open')); } });
@@ -526,7 +528,7 @@ function renderAbout() {
   <li>Krúžok na mape je sídlo zmluvnej strany, nie miesto, kde sa práca robí. Preto je najviac peňazí v Bratislave.</li>
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
   <li><b>Dodatky</b> sa do súm nerátajú. Väčšinou opakujú celú sumu pôvodnej zmluvy, takže by sa tie isté peniaze zrátali viackrát. V zoznamoch ich vidíš so štítkom „dodatok“.${m.rules ? ` Za obdobie ich je ${intf.format(m.rules.amendments)}.` : ''}</li>
-  <li><b>Podozrivé sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
+  <li><b>Pravdepodobne chybné sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
   <li><b>Duplicity:</b> keď sú obe strany verejné inštitúcie, zmluvu zverejní každá zvlášť. Ak sa zhoduje číslo zmluvy, suma aj obe IČO, rátame ju len raz.${m.rules && m.rules.duplicates ? ` Takých zmlúv je ${intf.format(m.rules.duplicates)}.` : ''}</li>
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
   <li>Objednávateľ je zmluvná strana 1, dodávateľ strana 2, presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
@@ -540,10 +542,14 @@ function renderAbout() {
     <li>rámcové zmluvy sa rátajú celým stropom a medzi zmluvami sú aj úvery a eurofondy.</li></ul>
     Naopak, veľkú časť rozpočtu (dôchodky, platy, sociálne dávky) zmluvy vôbec nezachytávajú.</li></ul>
   <p class="lead">Detail zmlúv držíme za ${winName()} (od ${fdate(m.windowStart)}). Súčty „Od začiatku“ sa ukladajú natrvalo${m.everFrom ? ' od ' + fdate(m.everFrom) : ''} a stále pribúdajú. Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries. Fyzické osoby väčšinou adresu nemajú.</p>
-  ${m.rules && m.rules.suspicious ? `<h3>Podozrivé sumy (${m.rules.suspicious})</h3><p class="lead">Tieto zmluvy majú v registri uvedenú nereálnu sumu, spolu ${short(m.rules.suspiciousSum)}. Do súčtov ich nerátame. Ťukni pre detail.</p><div id="susp"><p class="empty">Načítavam…</p></div>` : ''}
-  <h3>Zdroje</h3>
+  ${m.rules && m.rules.suspicious ? `<h3>Pravdepodobne chybné sumy (${m.rules.suspicious})</h3><p class="lead">Pri týchto zmluvách je v registri uvedená suma, ktorá nie je reálna (spolu ${short(m.rules.suspiciousSum)}). Ide najmä o preklepy pri zadávaní alebo o strop rámcovej zmluvy. Neznamená to, že by bolo na zmluve niečo nezákonné. Do súčtov ich nerátame. Ťukni pre detail.</p><div id="susp"><p class="empty">Načítavam…</p></div>` : ''}
+  <h3>Zdroje a licencia</h3>
+  <p><b>Údaje sú upravené.</b> Pôvodné údaje z Centrálneho registra zmlúv (Úrad vlády SR) používame podľa licencie <a href="https://creativecommons.org/licenses/by/4.0/deed.sk" target="_blank" rel="noopener">CC BY 4.0</a>. Upravili sme ich takto: nerátame dodatky, duplicity a pravdepodobne chybné sumy, mená a adresy fyzických osôb nahrádzame textom „Fyzická osoba“, zmluvy umiestňujeme na mapu podľa PSČ sídla a automaticky rozlišujeme verejný a súkromný sektor. Pôvodné znenie každej zmluvy nájdeš v registri cez odkaz „Otvoriť v registri CRZ“.</p>
   <ul>${m.sources.map((s) => `<li><a href="${s.url}" target="_blank">${esc(s.name)}</a>, licencia ${esc(s.license)}</li>`).join('')}<li>Mapa © <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> a prispievatelia OpenStreetMap</li>
   <li>Zdrojový kód: <a href="https://github.com/jandokan/vydavky-statu" target="_blank">GitHub</a></li></ul>
+  <h3>Prevádzkovateľ a kontakt</h3>
+  <p>Mapa verejných zmlúv, Janko Koterba${CONTACT ? `, <a href="mailto:${CONTACT}">${CONTACT}</a>` : ''}. ${CONTACT ? 'Našiel si chybu alebo je subjekt zle zaradený? Napíš, opravíme to.' : ''}</p>
+  <a class="btn sec" href="/ochrana-udajov.html">Ochrana osobných údajov</a>
   <p class="lead">Aktualizované ${new Date(m.generated).toLocaleString('sk-SK')}</p></div>`;
 }
 
@@ -571,7 +577,7 @@ function renderHead() {
     ? `hodnota ${S.priv ? 'zmlúv so súkromným sektorom' : 'zmlúv'} ${perName()}, kde ${S.role === 'o' ? 'objednávateľ' : 'dodávateľ'} sídli tu`
     : `hodnota ${S.priv ? 'zmlúv so súkromným sektorom' : 'všetkých zmlúv'} ${perName()}<span class="src">na mape podľa sídla ${side}: ${short(mapped)} v ${intf.format(places)} miestach${off > sum * 0.02 ? `, ${short(off)} bez adresy na Slovensku` : ''}</span>`)
     + `
-<span class="src">Zdroj: CRZ · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
+<span class="src">Zdroj: CRZ (CC BY 4.0, upravené) · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
 }
 $('#scope').addEventListener('click', (e) => { if (e.target.closest('#toSK')) resetScope(); });
 $('#tSub').addEventListener('click', (e) => { if (e.target.closest('#how')) { setTab('about'); if (snap < 2) setSnap(2); setTimeout(() => $('#ako')?.scrollIntoView({ block: 'start' }), 60); } });

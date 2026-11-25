@@ -308,7 +308,7 @@ writeJson(path.join(API, 'names-ever.json'), { cols: ['name', 'ico', 'place', 'n
 // denné súčty: dni v okne prepočítame, staršie zostávajú v histórii natrvalo
 for (const d of Object.keys(daily)) if (d >= windowStart) delete daily[d];
 for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] || (daily[z] = { n: 0, s: 0, np: 0, sp: 0 }); o.n++; o.s = round(o.s + counted(r)); if (!r.verejna) { o.np = (o.np || 0) + 1; o.sp = round((o.sp || 0) + counted(r)); } }
-// podozrivé sumy – zoznam na kontrolu (nezapočítavajú sa)
+// pravdepodobne chybné sumy – zoznam na kontrolu (nezapočítavajú sa)
 const susp = [...records.values()].filter((r) => isActive(r) && isSuspicious(r)).sort((a, b) => amount(b) - amount(a));
 writeJson(path.join(API, 'suspicious.json'), { fields: FIELDS, limit: MAX_AMOUNT, rows: susp.slice(0, 200).map(row) });
 let exAm = 0, exAmS = 0, exDup = 0, exDupS = 0;

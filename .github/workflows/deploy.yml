@@ -27,7 +27,7 @@ jobs:
           mkdir -p data
           git fetch --depth=1 origin data && git --work-tree=data checkout FETCH_HEAD -- api && git reset -q || echo "Vetva data zatiaľ neexistuje"
       - name: Poskladať stránku
-        run: bash scripts/build-site.sh
+        run: CONTACT_EMAIL="${{ vars.CONTACT_EMAIL }}" bash scripts/build-site.sh
       - name: Nasadiť
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then

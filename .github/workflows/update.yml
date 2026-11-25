@@ -82,5 +82,5 @@ jobs:
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "::warning::Chýba secret CLOUDFLARE_API_TOKEN – nasadenie preskočené, stránka beží zo zálohy cez GitHub."; exit 0; fi
           rm -rf data/.git
-          bash scripts/build-site.sh
+          CONTACT_EMAIL="${{ vars.CONTACT_EMAIL }}" bash scripts/build-site.sh
           npx -y wrangler@4 deploy
