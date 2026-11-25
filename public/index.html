@@ -153,7 +153,7 @@ body.sheet-full #mapBtns{opacity:0;pointer-events:none}
   .brand span{display:none}
   .role button{font-size:15px}
 }
-@media (max-width:359px){.role button i{display:none}}
+@media (max-width:430px){.role button i{display:none}.role button{padding:6px 6px;font-size:14.5px}}
 
 /* ---------- celá obrazovka ---------- */
 body.fs #panel,body.fs .brand,body.fs #btnSearch{display:none}
@@ -204,8 +204,8 @@ body.fs .no-fs{display:none}
     <span><b>Mapa verejných zmlúv</b><small>z Centrálneho registra zmlúv</small></span>
   </a>
   <div class="role" id="role" role="group" aria-label="Zobraziť">
-    <button data-v="o" class="on"><i></i>Kto platí</button>
-    <button data-v="d"><i></i>Kto dostáva</button>
+    <button data-v="o" class="on"><i></i>Objednávatelia</button>
+    <button data-v="d"><i></i>Dodávatelia</button>
   </div>
   <button class="fab no-fs" id="btnSearch" aria-label="Hľadať"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
 </div>
@@ -235,6 +235,8 @@ body.fs .no-fs{display:none}
   <div class="chips" id="per" role="group" aria-label="Obdobie">
     <button class="chip" data-v="7">7 dní</button><button class="chip on" data-v="30">30 dní</button><button class="chip" data-v="all" id="perAll">1 rok</button><button class="chip" data-v="ever">Od začiatku</button>
     <span class="sep"></span>
+    <button class="chip ghost" id="priv" aria-pressed="false">Len súkromný sektor</button>
+    <span class="sep"></span>
     <button class="chip on" data-m="s">Suma</button><button class="chip" data-m="n">Počet</button>
   </div>
   <nav class="tabs" id="tabs">
@@ -259,7 +261,7 @@ body.fs .no-fs{display:none}
 
 <script>
 'use strict';
-const S = { role: 'o', per: '30', met: 's', tab: 'list', sort: 'amt', pidx: null, meta: null, places: null, cols: null, place: null, filter: '', names: null, top: null, daily: null, shown: 40 };
+const S = { role: 'o', per: '30', met: 's', tab: 'list', sort: 'amt', priv: false, pidx: null, meta: null, places: null, cols: null, place: null, filter: '', names: null, top: null, daily: null, shown: 40 };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const eur = new Intl.NumberFormat('sk-SK', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
@@ -282,6 +284,7 @@ const LABEL = {
   obstaravanie: 'Verejné obstarávanie', potvrdenie: 'Potvrdenie o zverejnení', potvrdenie_datum: 'Dátum potvrdenia', zmeny: 'Záznam zmien',
 };
 const COLOR = { o: '#2747E6', d: '#D21F66' };
+const SFX = () => (S.priv ? '_p' : ''); // prípona stĺpcov pre filter „Len súkromný sektor“
 const KRAJ = { Bratislava: 'Bratislavský', Trnava: 'Trnavský', Trencin: 'Trenčiansky', Nitra: 'Nitriansky', Zilina: 'Žilinský', 'Banska Bystrica': 'Banskobystrický', Presov: 'Prešovský', Kosice: 'Košický' };
 const where = (P) => [P.okres ? 'okres ' + P.okres : '', P.kraj ? (KRAJ[P.kraj] || P.kraj) + ' kraj' : ''].filter(Boolean).join(', ');
 const desktop = () => matchMedia('(min-width:900px)').matches;
@@ -304,7 +307,7 @@ function pad() {
 const home = () => map.fitBounds(SK, { padding: pad(), duration: 700 });
 
 function geojson() {
-  const c = S.cols, iN = c.indexOf(`${S.role}${S.per}n`), iS = c.indexOf(`${S.role}${S.per}s`), iV = S.met === 's' ? iS : iN;
+  const c = S.cols, iN = c.indexOf(`${S.role}${S.per}n${SFX()}`), iS = c.indexOf(`${S.role}${S.per}s${SFX()}`), iV = S.met === 's' ? iS : iN;
   const feats = [];
   for (const r of S.places) if (r[iN]) feats.push({ type: 'Feature', geometry: { type: 'Point', coordinates: [r[5], r[4]] }, properties: { key: r[0], name: r[1], v: r[iV] } });
   return { type: 'FeatureCollection', features: feats };
@@ -393,7 +396,7 @@ function contractRow(f, r) {
   const files = (o.prilohy || []).filter((p) => p[1]).map((p) => `<a href="https://www.crz.gov.sk/data/att/${esc(p[1])}" target="_blank" rel="noopener">${esc(p[0] || 'Príloha')}<span>PDF${p[2] ? ' · ' + Math.max(1, Math.round(p[2] / 1024)) + ' kB' : ''}</span></a>`).join('');
   return `<div class="row${why ? ' dead' : ''}" tabindex="0" role="button" aria-expanded="false">
     <div class="l1"><div class="t">${esc(o.predmet || o.cislo || 'Zmluva')}</div><div class="amt">${eur.format(amt || 0)}</div></div>
-    <div class="who"><b>${esc(o.objednavatel || '?')}</b> platí <b>${esc(o.dodavatel || '?')}</b></div>
+    <div class="who"><b>${esc(o.objednavatel || '?')}</b> → <b>${esc(o.dodavatel || '?')}</b></div>
     <div class="meta">${fdate(o.zverejnene)}${whyTag}${o.typ === 2 ? '<span class="tag">informácia</span>' : ''}${o.prilohy?.length ? `<span class="tag">${o.prilohy.length} ${plural(o.prilohy.length, 'príloha', 'prílohy', 'príloh')}</span>` : ''}</div>
     <div class="det"><dl>${rows}</dl>${files ? `<div class="files">${files}</div>` : ''}
       <a class="btn" href="https://www.crz.gov.sk/zmluva/${o.id}/" target="_blank" rel="noopener">Otvoriť v registri CRZ</a></div>
@@ -420,7 +423,8 @@ const skipOf = (I, r) => (I.X >= 0 ? !!r[I.X] : r[I.S] === 4 || r[I.S] === 5);
 // zmluvy vybraného miesta pre aktuálnu rolu a obdobie (+ filter podľa subjektu)
 function placeList() {
   const P = S.place, f = P.fields;
-  let list = P[S.role].filter((r) => inPeriod(f, r));
+  const iV = f.indexOf('verejna');
+  let list = P[S.role].filter((r) => inPeriod(f, r) && !(S.priv && iV >= 0 && r[iV] === 1));
   if (S.filter) { const q = norm(S.filter); list = list.filter((r) => norm(r.join(' ')).includes(q)); }
   return list;
 }
@@ -430,7 +434,7 @@ const filterChip = () => (S.filter ? `<div class="filter"><span>${esc(S.filter)}
 function renderList() {
   if (!S.place) {
     if (!S.top) { api('top.json').then((t) => { S.top = t; render(); }); return '<p class="empty">Načítavam…</p>'; }
-    const rows = S.top[detPer()];
+    const rows = S.top[detPer() + SFX()] || S.top[detPer()];
     return `<p class="lead">Najväčšie zmluvy na Slovensku ${S.per === 'ever' ? 'za ' + winName() : perName()}. Ťukni na krúžok na mape a uvidíš zmluvy konkrétneho miesta.</p>` + rows.slice(0, S.shown).map((r) => contractRow(S.top.fields, r)).join('') + more(rows.length);
   }
   const f = S.place.fields, I = fieldIdx(f);
@@ -466,13 +470,14 @@ function renderEnts() {
   const ev = S.per === 'ever';
   if (ev && !S.namesEver) { loadEver().then(render, () => { S.namesEver = S.names || { o: [], d: [] }; render(); }); return '<p class="empty">Načítavam…</p>'; }
   if (!ev && !S.names) { loadNames().then(render); return '<p class="empty">Načítavam…</p>'; }
-  const src = ev ? S.namesEver : S.names, pre = ev ? 'e' : '';
-  const list = src[S.role].slice(0, S.shown), mx = list[0]?.[4] || 1;
-  return `<p class="lead">${S.role === 'o' ? 'Objednávatelia' : 'Dodávatelia'} s najvyššou hodnotou zmlúv na Slovensku ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa jeho miesto.</p>`
-    + list.map((e, i) => rankRow(`data-ent="${pre}${S.role}:${i}"`, e[0], `${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}`, e[4], mx)).join('')
-    + more(Math.min(src[S.role].length, 1000));
+  const src = ev ? S.namesEver : S.names, pre = ev ? 'e' : '', lk = S.role + (S.priv && src[S.role + 'p'] ? 'p' : '');
+  const list = src[lk].slice(0, S.shown), mx = list[0]?.[4] || 1;
+  return `<p class="lead">${S.role === 'o' ? 'Objednávatelia' : 'Dodávatelia'} s najvyššou hodnotou zmlúv${S.priv ? ' so súkromným sektorom' : ''} na Slovensku ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa jeho miesto.</p>`
+    + list.map((e, i) => rankRow(`data-ent="${pre}${lk}:${i}"`, e[0], `${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}`, e[4], mx)).join('')
+    + more(Math.min(src[lk].length, 1000));
 }
-window.goEnt = (role, i) => { const ev = role[0] === 'e'; if (ev) role = role.slice(1); const e = (ev ? S.namesEver : S.names)[role][i]; closeSearch(); if (!e[2]) { alert('Sídlo tohto subjektu sa nepodarilo umiestniť na mapu.'); return; } setRole(role); openPlace(e[2], e[0]); };
+// key: „o“, „d“, „op“, „dp“ (súkromný sektor), s predponou „e“ pre „Od začiatku“
+window.goEnt = (key, i) => { const ev = key[0] === 'e'; if (ev) key = key.slice(1); const e = (ev ? S.namesEver : S.names)[key][i]; closeSearch(); if (!e[2]) { alert('Sídlo tohto subjektu sa nepodarilo umiestniť na mapu.'); return; } setRole(key[0]); openPlace(e[2], e[0]); };
 
 const MES = ['jan', 'feb', 'mar', 'apr', 'máj', 'jún', 'júl', 'aug', 'sep', 'okt', 'nov', 'dec'];
 // stĺpcový graf: keys = dni (RRRR-MM-DD) alebo mesiace (RRRR-MM)
@@ -500,8 +505,8 @@ function renderChart() {
     note = `Hodnota zmlúv ${S.role === 'o' ? 'objednávateľov' : 'dodávateľov'} so sídlom v mieste ${esc(S.place.name)} podľa dátumu zverejnenia${S.per === 'ever' ? ' (za ' + winName() + ')' : ''}.`;
   } else {
     if (!S.daily) { api('daily.json').then((d) => { S.daily = d; render(); }); return '<p class="empty">Načítavam…</p>'; }
-    for (const [d, v] of Object.entries(S.daily)) { if (d < from) continue; const k = monthly ? d.slice(0, 7) : d; const x = by.get(k) || { n: 0, s: 0 }; x.n += v.n; x.s += v.s; by.set(k, x); }
-    note = `Hodnota všetkých zmlúv na Slovensku podľa dátumu zverejnenia.${monthly ? '' : ' Sivé sú víkendy.'}`;
+    for (const [d, v0] of Object.entries(S.daily)) { if (d < from) continue; const v = S.priv ? { n: v0.np || 0, s: v0.sp || 0 } : v0; const k = monthly ? d.slice(0, 7) : d; const x = by.get(k) || { n: 0, s: 0 }; x.n += v.n; x.s += v.s; by.set(k, x); }
+    note = `Hodnota ${S.priv ? 'zmlúv so súkromným sektorom' : 'všetkých zmlúv'} na Slovensku podľa dátumu zverejnenia.${monthly ? '' : ' Sivé sú víkendy.'}`;
   }
   let keys = monthly ? [...new Set(dayKeys(from).map((d) => d.slice(0, 7)))] : dayKeys(from);
   const vals = keys.map((k) => (by.get(k) || { n: 0, s: 0 })[S.met]);
@@ -524,7 +529,9 @@ function renderAbout() {
   <li><b>Podozrivé sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
   <li><b>Duplicity:</b> keď sú obe strany verejné inštitúcie, zmluvu zverejní každá zvlášť. Ak sa zhoduje číslo zmluvy, suma aj obe IČO, rátame ju len raz.${m.rules && m.rules.duplicates ? ` Takých zmlúv je ${intf.format(m.rules.duplicates)}.` : ''}</li>
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
-  <li>„Kto platí“ je objednávateľ (zmluvná strana 1), „kto dostáva“ dodávateľ (strana 2), presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
+  <li>Objednávateľ je zmluvná strana 1, dodávateľ strana 2, presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
+  <li><b>Len súkromný sektor</b> vynechá zmluvy, kde sú obe strany verejné inštitúcie (ministerstvá, obce, kraje, školy, nemocnice, štátne a mestské firmy). Ostanú zmluvy s firmami, neziskovkami a ľuďmi. Za verejnú inštitúciu považujeme toho, kto sám pravidelne zverejňuje zmluvy, alebo koho tak určuje názov. Zaradenie je automatické a pri niektorých subjektoch môže byť nepresné.</li>
+  <li><b>Ochrana osobných údajov:</b> mená a adresy fyzických osôb (ľudí bez IČO) nezobrazujeme. Nahrádzame ich textom „Fyzická osoba“ a do rebríčkov ani vyhľadávania ich nedávame. Podnikatelia s IČO sa zobrazujú, lebo sú verejne v registroch.</li>
   <li>Súčet za celé Slovensko je rovnaký pre obe strany. Na mape sa dá ukázať len strana so známou adresou na Slovensku. Fyzické osoby register zverejňuje bez adresy a zahraničné firmy na mapu Slovenska nepatria.</li>
   <li><b>Súčty nie je správne porovnávať so štátnym rozpočtom.</b> Hodnota zmlúv za rok môže byť vyššia ako rozpočet, lebo:
     <ul><li>viacročná zmluva sa zaráta celá v deň zverejnenia, hoci sa platí postupne niekoľko rokov,</li>
@@ -544,14 +551,14 @@ const PIN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke=
 const SKICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>';
 function renderHead() {
   if (!S.cols) return;
-  const n = `${S.role}${S.per}n`, sm = `${S.role}${S.per}s`;
+  const n = `${S.role}${S.per}n${SFX()}`, sm = `${S.role}${S.per}s${SFX()}`;
   let sum = 0, cnt = 0, places = 0, mapped = 0;
   if (S.place) { const r = placeRow(S.place.key); sum = col(r, sm); cnt = col(r, n); }
   else {
     const iN = S.cols.indexOf(n), iS = S.cols.indexOf(sm);
     for (const r of S.places) { mapped += r[iS]; cnt += r[iN]; if (r[iN]) places++; }
     // celé Slovensko: súčet všetkých zmlúv, rovnaký pre obe strany (aj tie, ktoré sa nedajú umiestniť na mapu)
-    const t = S.meta.totals && S.meta.totals[S.per];
+    const t = S.meta.totals && S.meta.totals[S.per + SFX()];
     if (t) { sum = t.s; cnt = t.n; } else sum = mapped;
   }
   $('#scope').innerHTML = S.place
@@ -561,8 +568,8 @@ function renderHead() {
   const side = S.role === 'o' ? 'objednávateľa' : 'dodávateľa';
   const off = sum - mapped;
   $('#tSub').innerHTML = (S.place
-    ? `hodnota zmlúv ${perName()}, kde ${S.role === 'o' ? 'objednávateľ' : 'dodávateľ'} sídli tu`
-    : `hodnota všetkých zmlúv ${perName()}<span class="src">na mape podľa sídla ${side}: ${short(mapped)} v ${intf.format(places)} miestach${off > sum * 0.02 ? `, ${short(off)} bez adresy na Slovensku` : ''}</span>`)
+    ? `hodnota ${S.priv ? 'zmlúv so súkromným sektorom' : 'zmlúv'} ${perName()}, kde ${S.role === 'o' ? 'objednávateľ' : 'dodávateľ'} sídli tu`
+    : `hodnota ${S.priv ? 'zmlúv so súkromným sektorom' : 'všetkých zmlúv'} ${perName()}<span class="src">na mape podľa sídla ${side}: ${short(mapped)} v ${intf.format(places)} miestach${off > sum * 0.02 ? `, ${short(off)} bez adresy na Slovensku` : ''}</span>`)
     + `
 <span class="src">Zdroj: CRZ · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
 }
@@ -599,6 +606,11 @@ $('#per').onclick = (e) => {
   if (b.dataset.m) { S.met = b.dataset.m; $('#per').querySelectorAll('[data-m]').forEach((x) => x.classList.toggle('on', x === b)); }
   S.shown = 40; drawMap(); render();
 };
+$('#priv').onclick = () => {
+  S.priv = !S.priv; S.shown = 40;
+  $('#priv').classList.toggle('on', S.priv); $('#priv').setAttribute('aria-pressed', S.priv);
+  drawMap(); render();
+};
 $('#btnHome').onclick = () => (S.place ? resetScope() : home());
 $('#btnFs').onclick = async () => {
   const on = !document.body.classList.contains('fs');
@@ -622,7 +634,7 @@ q.addEventListener('input', async () => {
   const N = await loadNames(); const out = [];
   for (const role of ['o', 'd']) N[role].forEach((e, i) => { if (out.length < 60 && (norm(e[0]).includes(t) || (e[1] && e[1].includes(t)))) out.push([role, i, e]); });
   out.sort((a, b) => b[2][4] - a[2][4]);
-  res.innerHTML = out.slice(0, 25).map(([role, i, e]) => `<button class="rank" data-ent="${role}:${i}"><div class="n"><b>${esc(e[0])}</b><small><span class="tag ${role === 'o' ? '' : 'acc'}" style="${role === 'o' ? 'background:#E6EBFF;color:#2747E6' : 'background:#FCE4EE;color:#D21F66'}">${role === 'o' ? 'platí' : 'dostáva'}</span> ${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}${e[2] ? '' : ', bez miesta na mape'}</small></div><div class="amt">${short(e[4])}</div></button>`).join('')
+  res.innerHTML = out.slice(0, 25).map(([role, i, e]) => `<button class="rank" data-ent="${role}:${i}"><div class="n"><b>${esc(e[0])}</b><small><span class="tag ${role === 'o' ? '' : 'acc'}" style="${role === 'o' ? 'background:#E6EBFF;color:#2747E6' : 'background:#FCE4EE;color:#D21F66'}">${role === 'o' ? 'objednávateľ' : 'dodávateľ'}</span> ${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}${e[2] ? '' : ', bez miesta na mape'}</small></div><div class="amt">${short(e[4])}</div></button>`).join('')
     || '<p class="empty">Nič sa nenašlo. Hľadáme medzi subjektmi so zmluvami za posledné obdobie.</p>';
 });
 res.addEventListener('click', (e) => { const b = e.target.closest('[data-ent]'); if (b) { const [role, i] = b.dataset.ent.split(':'); goEnt(role, +i); } });
@@ -634,7 +646,8 @@ setSnap(0);
     S.meta = await api('meta.json'); V = S.meta.generated;
     $('#perAll').textContent = S.meta.windowDays >= 365 ? '1 rok' : S.meta.windowDays + ' dní';
     const pl = await api('places.json'); S.cols = pl.cols; S.places = pl.rows; S.pidx = new Map(pl.rows.map((r) => [r[0], r]));
-    if (!S.cols.includes('oevern')) document.querySelector('#per [data-v=ever]').hidden = true; // staršie dáta bez súhrnov
+    if (!S.cols.includes('oevern')) document.querySelector('#per [data-v=ever]').hidden = true;
+    if (!S.cols.includes('o7n_p')) $('#priv').hidden = true; // staršie dáta bez súhrnov
     if (map.loaded()) drawMap(); else map.on('load', drawMap);
     render();
   } catch (e) {
