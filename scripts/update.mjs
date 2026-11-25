@@ -65,7 +65,8 @@ for (const f of recFiles) {
   for (const line of zlib.gunzipSync(fs.readFileSync(f)).toString('utf8').split('\n')) if (line) { const r = anonymize(JSON.parse(line)); records.set(r.id, r); }
 }
 // trvalé mesačné súhrny; pri zmene pravidiel výpočtu (CALC_VERSION) sa prepočítajú odznova
-const CALC_VERSION = 4; // 3 = duplicity, 4 = súčty aj pre súkromný sektor, anonymizácia osôb
+const CALC_VERSION = 5; // 5 = miesta spojené podľa obce (nie podľa PSČ)
+const _cv = 4; // 3 = duplicity, 4 = súčty aj pre súkromný sektor, anonymizácia osôb
 let monthly = readJson(path.join(STATE, 'monthly.json'), {});
 if (monthly._v !== CALC_VERSION) { console.log('Nové pravidlá výpočtu → mesačné súhrny sa prepočítajú'); monthly = {}; }
 delete monthly._v;

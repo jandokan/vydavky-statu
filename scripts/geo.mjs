@@ -14,9 +14,24 @@ export function loadGeoNames(txt) {
     if (psc.length !== 5 || !lat || !lon) continue;
     places.push({ psc, name: c[2], kraj: c[3], okres: (c[5] || '').replace(/^Okres\s+/, ''), lat, lon, n: norm(c[2]) });
   }
+  // Viac PSČ tej istej obce spojíme do jedného miesta: GeoNames pomenúva PSČ podľa pošty
+  // („Bratislava 1“, „Bratislava 15“…) a dáva im rovnaké súradnice, takže by na mape vzniklo
+  // desiatky prekrývajúcich sa „miest“. Kľúč = názov bez čísla pošty + okres, poloha = priemer.
+  const groups = new Map();
+  for (const p of places) {
+    p.name = p.name.replace(/\s+\d+$/, '').trim();
+    // Bratislava a Košice: pomenujeme podľa okresu (Bratislava I–V, Košice I–IV)
+    if (p.okres && p.okres !== p.name && /^(Bratislava|Košice) [IV]+$/.test(p.okres) && p.okres.startsWith(p.name)) p.name = p.okres;
+    p.n = norm(p.name);
+    p.key = `${slug(p.name)}--${slug(p.okres) || 'x'}`;
+    (groups.get(p.key) || groups.set(p.key, []).get(p.key)).push(p);
+  }
+  for (const g of groups.values()) {
+    const lat = g.reduce((a, p) => a + p.lat, 0) / g.length, lon = g.reduce((a, p) => a + p.lon, 0) / g.length;
+    for (const p of g) { p.lat = Math.round(lat * 1e4) / 1e4; p.lon = Math.round(lon * 1e4) / 1e4; }
+  }
   const byPsc = new Map(), byPrefix = new Map(), byName = new Map();
   for (const p of places) {
-    p.key = `${p.psc}-${slug(p.name)}`;
     (byPsc.get(p.psc) || byPsc.set(p.psc, []).get(p.psc)).push(p);
     const pre = p.psc.slice(0, 3);
     (byPrefix.get(pre) || byPrefix.set(pre, []).get(pre)).push(p);
