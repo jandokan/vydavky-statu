@@ -522,7 +522,12 @@ function renderAbout() {
   <li><b>Podozrivé sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
   <li>„Kto platí“ je objednávateľ (zmluvná strana 1), „kto dostáva“ dodávateľ (strana 2), presne ako v registri.</li>
-  <li>Súčty preto nie je správne porovnávať s rozpočtom. Zmluvami sa neplatia dôchodky, platy ani dávky a naopak medzi zmluvami sú aj úvery, eurofondy, nájmy či zmluvy medzi štátnymi organizáciami. V registri sú navyše aj obce, mestá a štátne firmy.</li></ul>
+  <li><b>Súčty nie je správne porovnávať so štátnym rozpočtom.</b> Hodnota zmlúv za rok môže byť vyššia ako rozpočet, lebo:
+    <ul><li>viacročná zmluva sa zaráta celá v deň zverejnenia, hoci sa platí postupne niekoľko rokov,</li>
+    <li>v registri sú aj obce, mestá, kraje, nemocnice a štátne firmy, ktoré nie sú súčasťou štátneho rozpočtu,</li>
+    <li>tie isté peniaze často prechádzajú viacerými zmluvami (napr. ministerstvo → štátna firma → dodávateľ),</li>
+    <li>rámcové zmluvy sa rátajú celým stropom a medzi zmluvami sú aj úvery a eurofondy.</li></ul>
+    Naopak, veľkú časť rozpočtu (dôchodky, platy, sociálne dávky) zmluvy vôbec nezachytávajú.</li></ul>
   <p class="lead">Detail zmlúv držíme za ${winName()} (od ${fdate(m.windowStart)}). Súčty „Od začiatku“ sa ukladajú natrvalo${m.everFrom ? ' od ' + fdate(m.everFrom) : ''} a stále pribúdajú. Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries. Fyzické osoby väčšinou adresu nemajú.</p>
   ${m.rules && m.rules.suspicious ? `<h3>Podozrivé sumy (${m.rules.suspicious})</h3><p class="lead">Tieto zmluvy majú v registri uvedenú nereálnu sumu, spolu ${short(m.rules.suspiciousSum)}. Do súčtov ich nerátame. Ťukni pre detail.</p><div id="susp"><p class="empty">Načítavam…</p></div>` : ''}
   <h3>Zdroje</h3>
