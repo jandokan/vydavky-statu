@@ -379,6 +379,7 @@ function contractRow(f, r) {
   const why = o.nezapocitane !== undefined ? o.nezapocitane : dead ? 'zrušená' : null;
   const whyTag = why === 'dodatok' ? '<span class="tag">dodatok · nezapočítava sa</span>'
     : why === 'podozrivá suma' ? '<span class="tag red">podozrivá suma · nezapočítava sa</span>'
+    : why === 'duplicita' ? '<span class="tag">zverejnená aj druhou stranou · nezapočítava sa</span>'
     : why ? `<span class="tag red">${STAV[o.stav] || why}</span>` : '';
   const rows = f.filter((k) => LABEL[k] && o[k] != null && o[k] !== '').map((k) => {
     let v = o[k], html = null;
@@ -435,6 +436,7 @@ function renderList() {
   const f = S.place.fields, I = fieldIdx(f);
   let list = placeList();
   if (S.sort === 'date') list = [...list].sort((a, b) => (b[I.Z] || '').localeCompare(a[I.Z] || ''));
+  else list = [...list].sort((a, b) => skipOf(I, a) - skipOf(I, b)); // nezapočítané (dodatky, duplicity) až na koniec
   return `<div class="seg" id="sort"><button data-v="amt" class="${S.sort !== 'date' ? 'on' : ''}">Najväčšie</button><button data-v="date" class="${S.sort === 'date' ? 'on' : ''}">Najnovšie</button></div>
     ${filterChip()}${S.per === 'ever' ? `<p class="lead">Zoznam zmlúv je za ${winName()}, súčet hore je od začiatku.</p>` : ''}${capNote()}
     ${list.slice(0, S.shown).map((r) => contractRow(f, r)).join('') || `<p class="empty">${S.role === 'o' ? 'Objednávatelia odtiaľto' : 'Dodávatelia odtiaľto'} nemajú ${perName()} žiadne zmluvy.</p>`}${more(list.length)}`;
@@ -520,8 +522,10 @@ function renderAbout() {
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
   <li><b>Dodatky</b> sa do súm nerátajú. Väčšinou opakujú celú sumu pôvodnej zmluvy, takže by sa tie isté peniaze zrátali viackrát. V zoznamoch ich vidíš so štítkom „dodatok“.${m.rules ? ` Za obdobie ich je ${intf.format(m.rules.amendments)}.` : ''}</li>
   <li><b>Podozrivé sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
+  <li><b>Duplicity:</b> keď sú obe strany verejné inštitúcie, zmluvu zverejní každá zvlášť. Ak sa zhoduje číslo zmluvy, suma aj obe IČO, rátame ju len raz.${m.rules && m.rules.duplicates ? ` Takých zmlúv je ${intf.format(m.rules.duplicates)}.` : ''}</li>
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
-  <li>„Kto platí“ je objednávateľ (zmluvná strana 1), „kto dostáva“ dodávateľ (strana 2), presne ako v registri.</li>
+  <li>„Kto platí“ je objednávateľ (zmluvná strana 1), „kto dostáva“ dodávateľ (strana 2), presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
+  <li>Súčet za celé Slovensko je rovnaký pre obe strany. Na mape sa dá ukázať len strana so známou adresou na Slovensku. Fyzické osoby register zverejňuje bez adresy a zahraničné firmy na mapu Slovenska nepatria.</li>
   <li><b>Súčty nie je správne porovnávať so štátnym rozpočtom.</b> Hodnota zmlúv za rok môže byť vyššia ako rozpočet, lebo:
     <ul><li>viacročná zmluva sa zaráta celá v deň zverejnenia, hoci sa platí postupne niekoľko rokov,</li>
     <li>v registri sú aj obce, mestá, kraje, nemocnice a štátne firmy, ktoré nie sú súčasťou štátneho rozpočtu,</li>
@@ -541,15 +545,26 @@ const SKICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stro
 function renderHead() {
   if (!S.cols) return;
   const n = `${S.role}${S.per}n`, sm = `${S.role}${S.per}s`;
-  let sum = 0, cnt = 0, places = 0;
+  let sum = 0, cnt = 0, places = 0, mapped = 0;
   if (S.place) { const r = placeRow(S.place.key); sum = col(r, sm); cnt = col(r, n); }
-  else { const iN = S.cols.indexOf(n), iS = S.cols.indexOf(sm); for (const r of S.places) { sum += r[iS]; cnt += r[iN]; if (r[iN]) places++; } }
+  else {
+    const iN = S.cols.indexOf(n), iS = S.cols.indexOf(sm);
+    for (const r of S.places) { mapped += r[iS]; cnt += r[iN]; if (r[iN]) places++; }
+    // celé Slovensko: súčet všetkých zmlúv, rovnaký pre obe strany (aj tie, ktoré sa nedajú umiestniť na mapu)
+    const t = S.meta.totals && S.meta.totals[S.per];
+    if (t) { sum = t.s; cnt = t.n; } else sum = mapped;
+  }
   $('#scope').innerHTML = S.place
     ? `<span class="lbl here">${PIN}<span>${esc(S.place.name)}<small>${esc(where(S.place))}</small></span></span><button class="back" id="toSK">${SKICON}Celé Slovensko</button>`
     : `<span class="lbl">${SKICON}<span>Celé Slovensko<small>ťukni na krúžok a vyber miesto</small></span></span>`;
   $('#tSum').textContent = short(sum); $('#tCnt').textContent = intf.format(cnt);
-  $('#tSub').innerHTML = `hodnota zmlúv ${perName()}, ${S.place ? (S.role === 'o' ? 'kde objednávateľ sídli tu' : 'kde dodávateľ sídli tu') : (S.role === 'o' ? 'podľa sídla objednávateľa' : 'podľa sídla dodávateľa') + ' · ' + intf.format(places) + ' miest'}
-    <span class="src">Zdroj: CRZ, Úrad vlády SR · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
+  const side = S.role === 'o' ? 'objednávateľa' : 'dodávateľa';
+  const off = sum - mapped;
+  $('#tSub').innerHTML = (S.place
+    ? `hodnota zmlúv ${perName()}, kde ${S.role === 'o' ? 'objednávateľ' : 'dodávateľ'} sídli tu`
+    : `hodnota všetkých zmlúv ${perName()}<span class="src">na mape podľa sídla ${side}: ${short(mapped)} v ${intf.format(places)} miestach${off > sum * 0.02 ? `, ${short(off)} bez adresy na Slovensku` : ''}</span>`)
+    + `
+<span class="src">Zdroj: CRZ · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
 }
 $('#scope').addEventListener('click', (e) => { if (e.target.closest('#toSK')) resetScope(); });
 $('#tSub').addEventListener('click', (e) => { if (e.target.closest('#how')) { setTab('about'); if (snap < 2) setSnap(2); setTimeout(() => $('#ako')?.scrollIntoView({ block: 'start' }), 60); } });

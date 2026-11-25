@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { unzip } from './zip.mjs';
-import { parseExport, amount, isActive, counted, excludeReason, isSuspicious, MAX_AMOUNT } from './parse.mjs';
+import { parseExport, amount, isActive, counted, excludeReason, isSuspicious, isAmendment, MAX_AMOUNT } from './parse.mjs';
 import { loadGeoNames, makeGeocoder, norm } from './geo.mjs';
 
 const DATA = path.resolve(process.env.DATA_DIR || 'data');
@@ -64,7 +64,7 @@ for (const f of recFiles) {
   for (const line of zlib.gunzipSync(fs.readFileSync(f)).toString('utf8').split('\n')) if (line) { const r = JSON.parse(line); records.set(r.id, r); }
 }
 // trvalé mesačné súhrny; pri zmene pravidiel výpočtu (CALC_VERSION) sa prepočítajú odznova
-const CALC_VERSION = 2;
+const CALC_VERSION = 3; // 3 = aj duplicity
 let monthly = readJson(path.join(STATE, 'monthly.json'), {});
 if (monthly._v !== CALC_VERSION) { console.log('Nové pravidlá výpočtu → mesačné súhrny sa prepočítajú'); monthly = {}; }
 delete monthly._v;
@@ -146,6 +146,26 @@ const geocode = makeGeocoder(geo);
 const placeByKey = new Map(geo.places.map((p) => [p.key, p]));
 console.log(`GeoNames: ${geo.places.length} miest`);
 for (const r of changed.values()) { r.miesto_o = geocode(r.objednavatel_adresa)?.key || null; r.miesto_d = geocode(r.dodavatel_adresa)?.key || null; }
+
+// ---------- duplicity ----------
+// Keď sú obe strany verejné inštitúcie, zmluvu zverejní každá zvlášť (často s prehodenými stranami).
+// Rovnaké číslo zmluvy + rovnaká suma + rovnaké dve IČO = tá istá zmluva → rátame len prvú zverejnenú.
+{
+  const nc = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const groups = new Map();
+  for (const r of records.values()) {
+    delete r._dup;
+    if (!isActive(r) || isSuspicious(r) || isAmendment(r)) continue;
+    const a = Math.round(amount(r)), c = nc(r.cislo);
+    if (!a || !c || !r.objednavatel_ico || !r.dodavatel_ico) continue;
+    const k = `${c}|${a}|${[r.objednavatel_ico, r.dodavatel_ico].sort().join('-')}`;
+    (groups.get(k) || groups.set(k, []).get(k)).push(r);
+  }
+  for (const g of groups.values()) if (g.length > 1) {
+    g.sort((x, y) => (x.zverejnene || '').localeCompare(y.zverejnene || '') || x.id - y.id);
+    for (const r of g.slice(1)) r._dup = true;
+  }
+}
 
 // ---------- výstupy ----------
 fs.rmSync(API, { recursive: true, force: true });
@@ -275,7 +295,13 @@ for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] |
 // podozrivé sumy – zoznam na kontrolu (nezapočítavajú sa)
 const susp = [...records.values()].filter((r) => isActive(r) && isSuspicious(r)).sort((a, b) => amount(b) - amount(a));
 writeJson(path.join(API, 'suspicious.json'), { fields: FIELDS, limit: MAX_AMOUNT, rows: susp.slice(0, 200).map(row) });
-let exAm = 0, exAmS = 0; for (const r of records.values()) if (excludeReason(r) === 'dodatok') { exAm++; exAmS += amount(r); }
+let exAm = 0, exAmS = 0, exDup = 0, exDupS = 0;
+for (const r of records.values()) { const w = excludeReason(r); if (w === 'dodatok') { exAm++; exAmS += amount(r); } else if (w === 'duplicita') { exDup++; exDupS += amount(r); } }
+// celkové súčty všetkých započítaných zmlúv (bez ohľadu na to, či sa dajú umiestniť na mapu)
+const totals = {};
+for (const [k, from] of periods) { let n = 0, sm = 0; for (const r of all) if (r.zverejnene.slice(0, 10) >= from) { n++; sm += counted(r); } totals[k] = { n, s: round(sm) }; }
+{ let n = 0, sm = 0; for (const M of Object.values(monthly)) { n += M.n; sm += M.s; } totals.ever = { n, s: round(sm) }; }
+const dataStart = Object.keys(daily).sort()[0] || windowStart;
 writeJson(path.join(API, 'daily.json'), daily);
 
 let pendingDays = 0;
@@ -284,8 +310,8 @@ const failedDays = Object.keys(state.days).filter((d) => state.days[d].failed).s
 const lastDay = Object.keys(state.days).filter((d) => state.days[d].n != null && d !== 'fixture').sort().pop() || null;
 const meta = {
   generated: new Date().toISOString(), lastDay, windowDays: WINDOW, windowStart, placeCap: CAP,
-  contracts: records.size, active: all.length, pendingDays, failedDays, rules: { maxAmount: MAX_AMOUNT, suspicious: susp.length, suspiciousSum: round(susp.reduce((a, r) => a + amount(r), 0)), amendments: exAm, amendmentsSum: round(exAmS) }, places: places.size, changesThisRun: newCount, geocoding: geoStats,
-  periods: { '7': d7, '30': d30, all: windowStart }, everFrom: firstMonth ? firstMonth + '-01' : null, plan: 'free',
+  contracts: records.size, active: all.length, pendingDays, failedDays, totals, rules: { duplicates: exDup, duplicatesSum: round(exDupS), maxAmount: MAX_AMOUNT, suspicious: susp.length, suspiciousSum: round(susp.reduce((a, r) => a + amount(r), 0)), amendments: exAm, amendmentsSum: round(exAmS) }, places: places.size, changesThisRun: newCount, geocoding: geoStats,
+  periods: { '7': d7, '30': d30, all: windowStart }, everFrom: dataStart, plan: 'free',
   sources: [
     { name: 'Centrálny register zmlúv, Úrad vlády SR', url: 'https://www.crz.gov.sk/', license: 'CC BY 4.0' },
     { name: 'GeoNames – PSČ Slovenska', url: 'https://www.geonames.org/', license: 'CC BY 4.0' },

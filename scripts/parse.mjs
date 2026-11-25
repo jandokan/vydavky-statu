@@ -97,5 +97,6 @@ const AMEND = /^[\s"„'(\-–]*(dodatok|dodatku|dodatkom|dodatek|dod\.)/i;
 export const isAmendment = (r) => r.druh === 2 || AMEND.test(r.predmet || '') || AMEND.test(r.cislo || '');
 export const isSuspicious = (r) => amount(r) > MAX_AMOUNT;
 // prečo sa zmluva nezapočítava do súčtov (null = započítava sa)
-export const excludeReason = (r) => !isActive(r) ? 'zrušená' : isSuspicious(r) ? 'podozrivá suma' : isAmendment(r) ? 'dodatok' : null;
+// r._dup nastavuje update.mjs: tá istá zmluva zverejnená aj druhou stranou
+export const excludeReason = (r) => !isActive(r) ? 'zrušená' : isSuspicious(r) ? 'podozrivá suma' : isAmendment(r) ? 'dodatok' : r._dup ? 'duplicita' : null;
 export const counted = (r) => (excludeReason(r) ? 0 : amount(r));
