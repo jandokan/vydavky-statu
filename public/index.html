@@ -156,13 +156,15 @@ body.sheet-min .head .total,body.sheet-min .head .sub{visibility:hidden}
 @media (max-width:430px){.role button i{display:none}.role button{padding:6px 6px;font-size:14.5px}}
 
 /* ---------- celá obrazovka ---------- */
-body.fs #panel,body.fs .brand,body.fs #btnSearch{display:none}
+body.fs #panel,body.fs .brand,body.fs #btnSearch,body.fs #panelToggle{display:none!important}
 body.fs{--peek:0px;--sh:0px!important}
 body.fs #mapBtns{bottom:calc(env(safe-area-inset-bottom) + 40px)}
 .only-fs{display:none}
 body.fs .only-fs{display:block}
 body.fs .no-fs{display:none}
 
+#panelToggle{display:none;position:fixed;z-index:9;top:50%;left:var(--panel);transform:translateY(-50%);width:34px;height:72px;border:0;border-radius:0 14px 14px 0;background:var(--card);box-shadow:4px 0 14px -6px rgba(22,33,62,.35);place-items:center;transition:left .25s cubic-bezier(.2,.8,.2,1)}
+#panelToggle svg{transition:transform .25s}
 #panel .brandrow{display:none;align-items:center;justify-content:space-between;gap:10px;padding:20px 18px 6px}
 #panel .brandrow .brand{box-shadow:none;padding:0;height:auto;width:auto}
 #panel .brandrow .brand span{display:block}
@@ -173,7 +175,17 @@ body.fs .no-fs{display:none}
 @media (min-width:900px){
   :root{--peek:0px}
   #map{left:var(--panel)}
-  #panel{top:0;right:auto;width:var(--panel);height:auto!important;border-radius:0;box-shadow:1px 0 0 var(--line);padding-bottom:0}
+  /* celý panel sa posúva ako jeden celok (aj dotykom), aby bol zoznam zmlúv dostupný aj na nízkej obrazovke */
+  #panel{top:0;right:auto;width:var(--panel);height:auto!important;border-radius:0;box-shadow:1px 0 0 var(--line);padding-bottom:0;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
+  #body{flex:none;overflow:visible}
+  #panel>*{flex-shrink:0}
+  #panel .tabs{position:sticky;top:0;background:var(--card);z-index:2}
+  #panelToggle{display:grid}
+  body.panel-off #panel{transform:translateX(-100%)}
+  body.panel-off #map{left:0}
+  body.panel-off #top{left:64px}
+  body.panel-off #panelToggle{left:0}
+  body.panel-off #panelToggle svg{transform:rotate(180deg)}
   .grab{display:none}
   #panel .brandrow{display:flex}
   #top{left:calc(var(--panel) + 14px);right:14px;top:14px}
@@ -218,6 +230,7 @@ body.fs .no-fs{display:none}
   <button class="fab" id="btnHome" aria-label="Celé Slovensko" title="Celé Slovensko"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg></button>
 </div>
 
+<button id="panelToggle" aria-label="Skryť panel" title="Skryť / zobraziť panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
 <section id="panel" aria-label="Prehľad">
   <div class="brandrow">
     <a class="brand" href="/" aria-label="Mapa verejných zmlúv">
@@ -414,14 +427,15 @@ function setSnap(i) {
     if (Math.abs(v) > 60 && best === snap) best += v > 0 ? 1 : -1;
     setSnap(best);
   };
-  for (const el of [$('#grab'), $('#head')]) el.addEventListener('pointerdown', (e) => { if (e.target.closest('button,a')) return; // tlačidlá v hlavičke nesmú spúšťať ťahanie
+  for (const el of [$('#grab'), $('#head')]) el.addEventListener('pointerdown', (e) => { if (e.target.closest('button,a') || desktop()) return; // tlačidlá v hlavičke nesmú spúšťať ťahanie; na počítači sa neťahá
     el.setPointerCapture(e.pointerId); start(e); });
   for (const el of [$('#grab'), $('#head')]) { el.addEventListener('pointermove', move); el.addEventListener('pointerup', end); el.addEventListener('pointercancel', end); }
 })();
 addEventListener('resize', () => setSnap(snap));
 
 // ---------- obsah panela ----------
-function setTab(t) { S.tab = t; S.shown = 40; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t)); render(); $('#body').scrollTop = 0; }
+function setTab(t) { S.tab = t; S.shown = 40; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t)); render(); $('#body').scrollTop = 0;
+  if (desktop()) { const t = $('#tabs').offsetTop; if (panel.scrollTop > t) panel.scrollTop = t; } }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { setTab(b.dataset.t); if (snap <= 1) setSnap(2); } };
 
 function contractRow(f, r) {
@@ -665,6 +679,11 @@ $('#priv').onclick = () => {
   S.priv = !S.priv; S.shown = 40;
   $('#priv').classList.toggle('on', S.priv); $('#priv').setAttribute('aria-pressed', S.priv);
   drawMap(); render();
+};
+$('#panelToggle').onclick = () => {
+  const off = document.body.classList.toggle('panel-off');
+  $('#panelToggle').setAttribute('aria-label', off ? 'Zobraziť panel' : 'Skryť panel');
+  setTimeout(() => map.resize(), 280);
 };
 $('#btnHome').onclick = () => (S.place ? resetScope() : home());
 $('#btnFs').onclick = async () => {
