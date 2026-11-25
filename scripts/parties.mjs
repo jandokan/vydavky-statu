@@ -6,22 +6,25 @@ const B = '(?:(?<![\\p{L}\\d])(?=[\\p{L}\\d])|(?<=[\\p{L}\\d])(?![\\p{L}\\d]))';
 const uni = (re) => new RegExp(re.source.replaceAll('\\b', B), re.flags.includes('u') ? re.flags : re.flags + 'u');
 
 // znaky organizácie v názve (právna forma alebo typ inštitúcie)
-const ORG = new RegExp([
-  's\\.? ?r\\.? ?o', 'a\\.? ?s\\b', 'spol\\b', 'spoločnos', 'v\\.? ?o\\.? ?s', 'k\\.? ?s\\b', 's\\.? ?p\\b', 'š\\.? ?p\\b', 'o\\.? ?z\\b', 'n\\.? ?o\\b', 'z\\.? ?p\\.? ?o',
-  'družstvo', 'podnik', 'firma', 'holding', 'group', 'invest', 'servis', 'service', 'trade', 'consult', 'tech', 'system', 'media', 'energ',
-  'obec', 'mesto', 'mestsk', 'mestská časť', 'kraj', 'župa', 'samospráv', 'vúc', 'úrad', 'ministerstv', 'štátn', 'národn', 'slovensk', 'republik', 'vlád', 'parlament',
-  'agentúr', 'fond', 'nadáci', 'nadačn', 'združeni', 'zväz', 'spolok', 'klub', 'jednot', 'únia', 'asociáci', 'komor', 'rada\\b', 'výbor', 'sekcia', 'zbor', 'cirk', 'farnos', 'biskup', 'reholn', 'kongregáci', 'diecéz', 'evanjel', 'katolíck', 'reformovan',
-  'škol', 'gymnázi', 'akadémi', 'univerzit', 'fakult', 'inštitút', 'ústav', 'centrum', 'stredisk', 'knižnic', 'múze', 'galéri', 'divadl', 'kino', 'osvet', 'kultúr', 'športov', 'telový', 'internát', 'jasle', 'domov', 'zariadeni', 'nemocnic', 'poliklinik', 'ambulanci', 'lekáreň', 'hospic', 'kúpele', 'sanatóri',
-  'polícia', 'hasič', 'armád', 'vojensk', 'súd\\b', 'súdy', 'prokuratúr', 'väzn', 'ozbrojen', 'správa', 'služby', 'technické', 'vodárensk', 'teplárensk', 'lesy', 'železnic', 'doprav', 'pošta', 'banka', 'poisťovň', 'sporiteľ',
-  'ltd', 'limited', 'llc', 'inc\\b', 'corp', 'company', 'gmbh', '\\bag\\b', 's\\.a\\.', 'b\\.v\\.', 'n\\.v\\.', 'kft', 'zrt', 'sp\\. ?z', 's\\.r\\.l', 'spa\\b', 'sas\\b', 'sarl', 'plc', 'oy\\b', '\\bab\\b',
-  'soza', 'lita\b', 'oza\b', 'foundation', 'university', 'institute', 'commission', 'office', 'agency', 'bank', 'union', 'european', 'europe', 'ministry', 'council', 'association',
-].join('|').replaceAll('\\b', B), 'iu');
+// PREFIX: slovo musí týmto začínať („Obec“, „Nemocnica…“); WORD: musí to byť celé slovo.
+// (Hľadanie kdekoľvek v slove by z mien ako „Vojtech“, „Školník“ či „Farkas“ robilo organizácie.)
+const PREFIX = ['spoločnos', 'družstv', 'podnik', 'holding', 'firm', 'invest', 'servis', 'service', 'trade', 'consult', 'technolog', 'system', 'media', 'energ', 'group', 'corporat',
+  'obec', 'obecn', 'mesto', 'mestsk', 'župa', 'samospráv', 'ministerstv', 'štátn', 'národn', 'slovensk', 'republik', 'vlád', 'parlament',
+  'agentúr', 'fond', 'nadáci', 'nadačn', 'združen', 'zväz', 'spolok', 'asociáci', 'cirk', 'farnos', 'biskup', 'reholn', 'kongregáci', 'diecéz', 'evanjel', 'katolíck', 'reformovan',
+  'gymnázi', 'akadémi', 'univerzit', 'fakult', 'inštitút', 'ústav', 'centr', 'stredisk', 'knižnic', 'múze', 'galéri', 'divadl', 'osvet', 'kultúr', 'športov', 'telovýchov', 'internát', 'zariaden', 'nemocnic', 'poliklinik', 'ambulanci', 'lekár', 'hospic', 'kúpe', 'sanatór',
+  'polícia', 'policajn', 'hasič', 'armád', 'vojensk', 'prokuratúr', 'väzen', 'ozbrojen', 'správ', 'služb', 'technick', 'vodárensk', 'teplárensk', 'železnic', 'dopravn', 'poisťov', 'sporiteľ',
+  'foundation', 'universit', 'institut', 'commission', 'agency', 'associat', 'council', 'ministr', 'europ', 'union', 'organiz', 'neziskov', 'občianske'];
+const WORD = ['s\\.? ?r\\.? ?o\\.?', 'a\\.? ?s\\.?', 'spol\\.?', 'v\\.? ?o\\.? ?s\\.?', 'k\\.? ?s\\.?', 's\\.? ?p\\.?', 'š\\.? ?p\\.?', 'o\\.? ?z\\.?', 'n\\.? ?o\\.?', 'z\\.? ?p\\.? ?o\\.?', 'r\\.? ?s\\.? ?p\\.?',
+  'kraj', 'klub', 'zbor', 'škola', 'školy', 'škole', 'úrad', 'úradu', 'súd', 'kino', 'jednota', 'únia', 'komora', 'výbor', 'sekcia', 'lesy', 'pošta', 'domov', 'bank', 'banka', 'banky', 'jasle', 'farma',
+  'ltd\\.?', 'limited', 'llc', 'inc\\.?', 'corp\\.?', 'company', 'gmbh', 'ag', 'kft\\.?', 'zrt\\.?', 'sp\\. ?z ?o\\.? ?o\\.?', 's\\.a\\.', 'b\\.v\\.', 'n\\.v\\.', 'srl', 's\\.r\\.l\\.', 'spa', 'sas', 'sarl', 'plc', 'oy', 'ab', 'office', 'soza', 'lita', 'oza'];
+const L = '[\\p{L}\\d]';
+const ORG = new RegExp(`(?<!${L})(?:${PREFIX.join('|')})|(?<!${L})(?:${WORD.join('|')})(?!${L})`, 'iu');
 // zástupné texty namiesto mena
 const PLACEHOLDER = uni(/^\s*(neuveden|podľa prílohy|neznám|viď|vid\b|nájomc|odberateľ|študent|žiadateľ|príjemc|kupujúc|predávajúc|fyzick[áé] osob|osoba\b|občan|x+\s*$|-+\s*$|\.+\s*$)/i);
 // verejné inštitúcie podľa názvu
 const PUBLIC = uni(/(?<!\p{L})(obec|mesto|mestsk[áa] časť|samosprávny kraj|vyšší územný|ministerstv|úrad\b|úrad |štátn|národn[áýé]|slovensk[áa] republik|univerzit|vysok[áa] škola|základn[áa] škola|materská škola|stredn[áa] .{0,20}škola|gymnázium|spojen[áa] škola|nemocnica|polícia|policajn|hasičsk|vojensk|ozbrojen|súd\b|prokuratúr|ústav na výkon|správa ciest|správa katastra|regionálna správa|železnice slovenskej|národná diaľničná|vodohospodárska výstavba|slovenský vodohospodársky|lesy slovenskej|sociálna poisťovňa|všeobecná zdravotná|slovenská televízia|rozhlas a televízia|knižnica|múzeum|galéria|divadlo|osvetové stredisko|centrum sociálnych|zariadenie pre seniorov|domov sociálnych|centrum voľného času|okresn[ýé] úrad|krajsk[ýé]|environmentáln[yý] fond|fond na podporu|zväz miest|združenie obcí|matica slovensk|príspevková organizácia|rozpočtová organizácia|mestsk[éý] (služby|podnik)|služby mesta|technické služby|správa mestsk|správa majetku mesta|výskumný ústav|kartografický ústav|ústav\b|mestská časť|mestskej časti)/iu);
 // obchodná právna forma v názve → podľa názvu verejnou nie je (len ak sama zverejňuje zmluvy)
-const COMMERCIAL = uni(/(s\.? ?r\.? ?o|\ba\.? ?s\b|spol\b|\bk\.? ?s\b|v\.? ?o\.? ?s|ltd|limited|gmbh|\bag\b|inc\b|kft|zrt|sp\. ?z)/i);
+const COMMERCIAL = uni(/(\bs\.? ?r\.? ?o\b|\ba\.? ?s\b|spol\b|\bk\.? ?s\b|v\.? ?o\.? ?s|ltd|limited|gmbh|\bag\b|inc\b|kft|zrt|sp\. ?z)/i);
 
 export function isPlaceholder(name) { return !name || PLACEHOLDER.test(name); }
 
@@ -38,14 +41,14 @@ export function isPerson(name, ico) {
 
 // Anonymizácia záznamu (idempotentná): mená a adresy fyzických osôb, názvy príloh, interné poznámky.
 export function anonymize(r) {
-  if (r._anon === 2) return r;
+  if (r._anon === 4) return r; // pri zmene pravidiel zvýš verziu → všetky záznamy sa prejdú znova
   let person = false;
   for (const [n, i, a, f] of [['objednavatel', 'objednavatel_ico', 'objednavatel_adresa', 'osoba_o'], ['dodavatel', 'dodavatel_ico', 'dodavatel_adresa', 'osoba_d']]) {
     if (r[f] || isPerson(r[n], r[i])) { r[n] = PLACEHOLDER.test(r[n] || '') && !/fyzick/i.test(r[n]) ? 'Neuvedené' : 'Fyzická osoba'; r[a] = null; r[f] = true; person = true; }
   }
   if (person && r.prilohy) r.prilohy = r.prilohy.map((p, i) => ({ ...p, nazov: `Príloha č. ${i + 1}` }));
   r.interna_poznamka = null;
-  r._anon = 2;
+  r._anon = 4;
   return r;
 }
 

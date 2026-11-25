@@ -297,10 +297,12 @@ writeJson(path.join(API, 'top.json'), topOut);
 
 // rebríčky: o, d = všetky zmluvy; op, dp = len so súkromným sektorom
 const entList = [...ents.values()];
-const topEnt = (role, p) => entList.filter((e) => e.role === role && (p ? e.s_p > 0 : true)).sort((a, b) => (p ? b.s_p - a.s_p : b.s - a.s)).slice(0, p ? 8000 : 15000).map((e) => (p ? [e.name, e.ico, e.place, e.n_p, round(e.s_p)] : [e.name, e.ico, e.place, e.n, round(e.s)]));
+// v rebríčku súkromných dodávateľov nechávame len nie-verejné subjekty (pri prehodených stranách by sa tam inak objavili ministerstvá)
+const privOk = (role, name, ico) => role !== 'd' || !isPublic(name, ico, pubSet);
+const topEnt = (role, p) => entList.filter((e) => e.role === role && (p ? e.s_p > 0 && privOk(role, e.name, e.ico) : true)).sort((a, b) => (p ? b.s_p - a.s_p : b.s - a.s)).slice(0, p ? 8000 : 15000).map((e) => (p ? [e.name, e.ico, e.place, e.n_p, round(e.s_p)] : [e.name, e.ico, e.place, e.n, round(e.s)]));
 writeJson(path.join(API, 'names.json'), { cols: ['name', 'ico', 'place', 'n', 's'], o: topEnt('o'), d: topEnt('d'), op: topEnt('o', 1), dp: topEnt('d', 1) });
 const everList = [...everEnt.entries()];
-const topEver = (role, p) => everList.filter(([k, e]) => k[0] === role && (p ? e[6] > 0 : true)).sort((a, b) => (p ? b[1][6] - a[1][6] : b[1][4] - a[1][4])).slice(0, p ? 8000 : 15000).map(([, e]) => (p ? [e[0], e[1], e[2], e[5], round(e[6])] : [e[0], e[1], e[2], e[3], round(e[4])]));
+const topEver = (role, p) => everList.filter(([k, e]) => k[0] === role && (p ? e[6] > 0 && privOk(role, e[0], e[1]) : true)).sort((a, b) => (p ? b[1][6] - a[1][6] : b[1][4] - a[1][4])).slice(0, p ? 8000 : 15000).map(([, e]) => (p ? [e[0], e[1], e[2], e[5], round(e[6])] : [e[0], e[1], e[2], e[3], round(e[4])]));
 writeJson(path.join(API, 'names-ever.json'), { cols: ['name', 'ico', 'place', 'n', 's'], from: firstMonth, o: topEver('o'), d: topEver('d'), op: topEver('o', 1), dp: topEver('d', 1) });
 
 // denné súčty: dni v okne prepočítame, staršie zostávajú v histórii natrvalo
