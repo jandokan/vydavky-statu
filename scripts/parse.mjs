@@ -86,3 +86,16 @@ export function parseExport(xml) {
 export const STAV = { 1: 'rozpracovaná', 2: 'zverejnená', 3: 'doplnená', 4: 'zrušená', 5: 'stiahnutá' };
 export const amount = (r) => (r.suma_spolu > 0 ? r.suma_spolu : r.suma) || 0;
 export const isActive = (r) => r.stav !== 4 && r.stav !== 5;
+
+// ---- Pravidlá pre súčty ----
+// Jedna zmluva nad touto sumou je takmer isto chyba pri zadávaní (napr. 230 mld € dotácia obce)
+// alebo nereálny strop rámcovej zmluvy. Celý štátny rozpočet SR 2026 má výdavky 33,5 mld €.
+export const MAX_AMOUNT = +(process.env.MAX_AMOUNT || 5e9);
+// Dodatok: CRZ ho často neoznačí (druh), poznať ho podľa názvu. Dodatky zvyčajne opakujú
+// celú sumu pôvodnej zmluvy, preto by sa rovnaké peniaze rátali viackrát.
+const AMEND = /^[\s"„'(\-–]*(dodatok|dodatku|dodatkom|dodatek|dod\.)/i;
+export const isAmendment = (r) => r.druh === 2 || AMEND.test(r.predmet || '') || AMEND.test(r.cislo || '');
+export const isSuspicious = (r) => amount(r) > MAX_AMOUNT;
+// prečo sa zmluva nezapočítava do súčtov (null = započítava sa)
+export const excludeReason = (r) => !isActive(r) ? 'zrušená' : isSuspicious(r) ? 'podozrivá suma' : isAmendment(r) ? 'dodatok' : null;
+export const counted = (r) => (excludeReason(r) ? 0 : amount(r));

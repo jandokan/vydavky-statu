@@ -365,6 +365,11 @@ function contractRow(f, r) {
   const o = Object.fromEntries(f.map((k, i) => [k, r[i]]));
   const amt = o.suma_spolu > 0 ? o.suma_spolu : o.suma;
   const dead = o.stav === 4 || o.stav === 5;
+  // prečo sa suma nezapočítava do súčtov (staršie dáta pole nemajú → len zrušené)
+  const why = o.nezapocitane !== undefined ? o.nezapocitane : dead ? 'zrušená' : null;
+  const whyTag = why === 'dodatok' ? '<span class="tag">dodatok · nezapočítava sa</span>'
+    : why === 'podozrivá suma' ? '<span class="tag red">podozrivá suma · nezapočítava sa</span>'
+    : why ? `<span class="tag red">${STAV[o.stav] || why}</span>` : '';
   const rows = f.filter((k) => LABEL[k] && o[k] != null && o[k] !== '').map((k) => {
     let v = o[k], html = null;
     if (k === 'suma' || k === 'suma_spolu') v = eur2.format(v);
@@ -375,10 +380,10 @@ function contractRow(f, r) {
     return `<dt>${LABEL[k]}</dt><dd>${html ?? esc(v)}</dd>`;
   }).join('');
   const files = (o.prilohy || []).filter((p) => p[1]).map((p) => `<a href="https://www.crz.gov.sk/data/att/${esc(p[1])}" target="_blank" rel="noopener">${esc(p[0] || 'Príloha')}<span>PDF${p[2] ? ' · ' + Math.max(1, Math.round(p[2] / 1024)) + ' kB' : ''}</span></a>`).join('');
-  return `<div class="row${dead ? ' dead' : ''}" tabindex="0" role="button" aria-expanded="false">
+  return `<div class="row${why ? ' dead' : ''}" tabindex="0" role="button" aria-expanded="false">
     <div class="l1"><div class="t">${esc(o.predmet || o.cislo || 'Zmluva')}</div><div class="amt">${eur.format(amt || 0)}</div></div>
     <div class="who"><b>${esc(o.objednavatel || '?')}</b> platí <b>${esc(o.dodavatel || '?')}</b></div>
-    <div class="meta">${fdate(o.zverejnene)}${o.druh === 2 ? '<span class="tag">dodatok</span>' : ''}${o.typ === 2 ? '<span class="tag">informácia</span>' : ''}${dead ? `<span class="tag red">${STAV[o.stav]}</span>` : ''}${o.prilohy?.length ? `<span class="tag">${o.prilohy.length} ${plural(o.prilohy.length, 'príloha', 'prílohy', 'príloh')}</span>` : ''}</div>
+    <div class="meta">${fdate(o.zverejnene)}${whyTag}${o.typ === 2 ? '<span class="tag">informácia</span>' : ''}${o.prilohy?.length ? `<span class="tag">${o.prilohy.length} ${plural(o.prilohy.length, 'príloha', 'prílohy', 'príloh')}</span>` : ''}</div>
     <div class="det"><dl>${rows}</dl>${files ? `<div class="files">${files}</div>` : ''}
       <a class="btn" href="https://www.crz.gov.sk/zmluva/${o.id}/" target="_blank" rel="noopener">Otvoriť v registri CRZ</a></div>
   </div>`;
@@ -397,11 +402,12 @@ $('#body').addEventListener('click', (e) => { if (e.target.closest('[data-more]'
 function renderPlace() {
   const P = S.place;
   if (!P) return `<p class="lead">Ťukni na krúžok na mape. Ukážu sa zmluvy subjektov so sídlom v danom mieste. Čím väčší krúžok, tým viac peňazí.</p>`;
-  const f = P.fields, iA = f.indexOf('suma_spolu'), iB = f.indexOf('suma'), iS = f.indexOf('stav');
+  const f = P.fields, iA = f.indexOf('suma_spolu'), iB = f.indexOf('suma'), iS = f.indexOf('stav'), iX = f.indexOf('nezapocitane');
   let list = P[S.placeRole].filter((r) => inPeriod(f, r));
   if (S.filter) { const q = norm(S.filter); list = list.filter((r) => norm(r.join(' ')).includes(q)); }
   const amt = (r) => (r[iA] > 0 ? r[iA] : r[iB]) || 0;
-  const sum = list.reduce((a, r) => a + (r[iS] === 4 || r[iS] === 5 ? 0 : amt(r)), 0);
+  const skip = (r) => (iX >= 0 ? !!r[iX] : r[iS] === 4 || r[iS] === 5);
+  const sum = list.reduce((a, r) => a + (skip(r) ? 0 : amt(r)), 0);
   const total = S.placeRole === 'o' ? P.oTotal : P.dTotal;
   const no = P.o.filter((r) => inPeriod(f, r)).length, nd = P.d.filter((r) => inPeriod(f, r)).length;
   return `<div class="place-h"><div><h2>${esc(P.name)}</h2><p>${esc(where(P))} · zmluvy ${S.per === 'ever' ? 'za ' + winName() : perName()}</p></div>
@@ -460,12 +466,19 @@ function renderAbout() {
   <p>Zmluvy, ktoré štát, samosprávy a ich organizácie zverejnili v <a href="https://www.crz.gov.sk/" target="_blank">Centrálnom registri zmlúv</a>. Každú noc sa sem automaticky stiahnu nové.</p>
   <div class="kpis"><div><small>Posledné dáta z</small><b>${fdate(m.lastDay) || '–'}</b></div><div><small>Zmlúv</small><b class="num">${intf.format(m.contracts)}</b></div></div>
   ${m.pendingDays ? `<div class="note">Niektoré dni ešte chýbajú (${m.pendingDays}). Register ich teraz nevydal, doplnia sa automaticky.</div>` : ''}
+  <h3>Porovnanie s rozpočtom</h3>
+  <div class="kpis"><div><small>Štátny rozpočet 2026 (výdavky)</small><b class="num">33,5 mld €</b></div><div><small>Celá verejná správa 2026</small><b class="num">67,9 mld €</b></div></div>
+  <p class="lead">Súčty zmlúv sa s rozpočtom nedajú porovnať presne. Veľká časť rozpočtu (dôchodky, platy, sociálne dávky) sa zmluvami neplatí a naopak zmluvy obsahujú aj úvery, eurofondy či prevody medzi štátnymi organizáciami.</p>
   <h3>Ako čítať čísla</h3>
   <ul><li>Suma je cena dohodnutá v zmluve vrátane dodatkov, nie skutočne vyplatené peniaze.</li>
   <li>Krúžok na mape je sídlo zmluvnej strany, nie miesto, kde sa práca robí. Preto je najviac peňazí v Bratislave.</li>
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
+  <li><b>Dodatky</b> sa do súm nerátajú. Väčšinou opakujú celú sumu pôvodnej zmluvy, takže by sa tie isté peniaze zrátali viackrát. V zoznamoch ich vidíš so štítkom „dodatok“.${m.rules ? ` Za obdobie ich je ${intf.format(m.rules.amendments)}.` : ''}</li>
+  <li><b>Podozrivé sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
+  <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
   <li>„Kto platí“ je zmluvná strana 1, „kto dostáva“ strana 2, presne ako v registri.</li></ul>
   <p class="lead">Detail zmlúv držíme za ${winName()} (od ${fdate(m.windowStart)}). Súčty „Od začiatku“ sa ukladajú natrvalo${m.everFrom ? ' od ' + fdate(m.everFrom) : ''} a stále pribúdajú. Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries. Fyzické osoby väčšinou adresu nemajú.</p>
+  ${m.rules && m.rules.suspicious ? `<h3>Podozrivé sumy (${m.rules.suspicious})</h3><p class="lead">Tieto zmluvy majú v registri uvedenú nereálnu sumu, spolu ${short(m.rules.suspiciousSum)}. Do súčtov ich nerátame. Ťukni pre detail.</p><div id="susp"><p class="empty">Načítavam…</p></div>` : ''}
   <h3>Zdroje</h3>
   <ul>${m.sources.map((s) => `<li><a href="${s.url}" target="_blank">${esc(s.name)}</a>, licencia ${esc(s.license)}</li>`).join('')}<li>Mapa © <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> a prispievatelia OpenStreetMap</li>
   <li>Zdrojový kód: <a href="https://github.com/jandokan/vydavky-statu" target="_blank">GitHub</a></li></ul>
@@ -482,6 +495,7 @@ function renderHead() {
 function render() {
   renderHead();
   $('#body').innerHTML = { place: renderPlace, top: renderTop, ents: renderEnts, chart: renderChart, about: renderAbout }[S.tab]();
+  if ($('#susp')) (S.susp ? Promise.resolve(S.susp) : api('suspicious.json').then((x) => (S.susp = x))).then((x) => { const el = $('#susp'); if (el) el.innerHTML = x.rows.map((r) => contractRow(x.fields, r)).join(''); }).catch(() => {});
 }
 
 async function openPlace(key, filter = '', role) {

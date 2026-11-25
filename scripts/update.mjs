@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { unzip } from './zip.mjs';
-import { parseExport, amount, isActive } from './parse.mjs';
+import { parseExport, amount, isActive, counted, excludeReason, isSuspicious, MAX_AMOUNT } from './parse.mjs';
 import { loadGeoNames, makeGeocoder, norm } from './geo.mjs';
 
 const DATA = path.resolve(process.env.DATA_DIR || 'data');
@@ -63,7 +63,11 @@ for (const f of recFiles) {
   if (!fs.existsSync(f) || !f.endsWith('.ndjson.gz')) continue;
   for (const line of zlib.gunzipSync(fs.readFileSync(f)).toString('utf8').split('\n')) if (line) { const r = JSON.parse(line); records.set(r.id, r); }
 }
-const monthly = readJson(path.join(STATE, 'monthly.json'), {}); // trvalé mesačné súhrny
+// trvalé mesačné súhrny; pri zmene pravidiel výpočtu (CALC_VERSION) sa prepočítajú odznova
+const CALC_VERSION = 2;
+let monthly = readJson(path.join(STATE, 'monthly.json'), {});
+if (monthly._v !== CALC_VERSION) { console.log('Nové pravidlá výpočtu → mesačné súhrny sa prepočítajú'); monthly = {}; }
+delete monthly._v;
 const state = readJson(path.join(STATE, 'state.json'), { days: {} });
 const daily = readJson(path.join(STATE, 'daily.json'), {});
 console.log(`Stav: ${records.size} zmlúv, ${Object.keys(state.days).length} spracovaných dní`);
@@ -150,7 +154,7 @@ fs.mkdirSync(path.join(API, 'p'), { recursive: true });
 const FIELDS = ['id', 'cislo', 'objednavatel', 'objednavatel_ico', 'objednavatel_adresa', 'dodavatel', 'dodavatel_ico', 'dodavatel_adresa',
   'predmet', 'popis', 'popis_predmetu', 'poznamka', 'poznamka_zmena', 'interna_poznamka', 'text_ucinnost', 'datum_podpisu', 'datum_ucinnosti',
   'platnost_do', 'zverejnene', 'zmenene', 'suma', 'suma_spolu', 'stav', 'typ', 'druh', 'zdroj', 'rezort', 'interne_id', 'referencia',
-  'obstaravanie', 'potvrdenie', 'potvrdenie_datum', 'zmeny', 'prilohy', 'miesto_o', 'miesto_d'];
+  'obstaravanie', 'potvrdenie', 'potvrdenie_datum', 'zmeny', 'prilohy', 'miesto_o', 'miesto_d', 'nezapocitane'];
 const row = (r) => FIELDS.map((f) => (f === 'prilohy' ? r.prilohy.map((p) => [p.nazov, p.subor, p.velkost]) : r[f] ?? null));
 
 const d7 = addDays(today, -7), d30 = addDays(today, -30);
@@ -170,7 +174,8 @@ function agg(obj, role, r, a) {
 }
 
 for (const r of records.values()) {
-  const a = isActive(r) ? amount(r) : 0;
+  const a = counted(r);
+  r.nezapocitane = excludeReason(r); // prečo sa nezapočítava (null = započítava sa)
   for (const role of ['o', 'd']) {
     const addr = role === 'o' ? r.objednavatel_adresa : r.dodavatel_adresa;
     const g = addr ? geocode(addr) : null;
@@ -202,11 +207,11 @@ const round = (x) => Math.round(x * 100) / 100;
 {
   const fresh = {};
   for (const r of records.values()) {
-    if (!isActive(r)) continue;
+    if (excludeReason(r)) continue;
     const m = r.zverejnene.slice(0, 7);
     if (monthly[m] && `${m}-01` < windowStart) continue; // zmrazený mesiac
     const M = fresh[m] || (fresh[m] = { p: {}, e: {}, n: 0, s: 0 });
-    const a = amount(r); M.n++; M.s += a;
+    const a = counted(r); M.n++; M.s += a;
     for (const role of ['o', 'd']) {
       const key = r['miesto_' + role];
       if (key) { const x = M.p[key] || (M.p[key] = [0, 0, 0, 0]); const i = role === 'o' ? 0 : 2; x[i]++; x[i + 1] += a; }
@@ -253,7 +258,7 @@ for (const pl of places.values()) {
 writeJson(path.join(API, 'places.json'), { cols: [...PCOLS, ...MCOLS], rows: placeRows });
 writeJson(path.join(API, 'okresy.json'), { cols: ['okres', 'kraj', ...MCOLS], rows: [...okresy.values()].map((o) => [o.okres, o.kraj, ...MCOLS.map((c) => round(o[c] || 0))]) });
 
-const all = [...records.values()].filter(isActive);
+const all = [...records.values()].filter((r) => !excludeReason(r)); // započítané zmluvy
 const top = (from) => all.filter((r) => r.zverejnene.slice(0, 10) >= from).sort((a, b) => amount(b) - amount(a)).slice(0, 300).map(row);
 writeJson(path.join(API, 'top.json'), { fields: FIELDS, '7': top(d7), '30': top(d30), all: top(windowStart) });
 
@@ -266,7 +271,11 @@ writeJson(path.join(API, 'names-ever.json'), { cols: ['name', 'ico', 'place', 'n
 
 // denné súčty: dni v okne prepočítame, staršie zostávajú v histórii natrvalo
 for (const d of Object.keys(daily)) if (d >= windowStart) delete daily[d];
-for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] || (daily[z] = { n: 0, s: 0 }); o.n++; o.s = round(o.s + amount(r)); }
+for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] || (daily[z] = { n: 0, s: 0 }); o.n++; o.s = round(o.s + counted(r)); }
+// podozrivé sumy – zoznam na kontrolu (nezapočítavajú sa)
+const susp = [...records.values()].filter((r) => isActive(r) && isSuspicious(r)).sort((a, b) => amount(b) - amount(a));
+writeJson(path.join(API, 'suspicious.json'), { fields: FIELDS, limit: MAX_AMOUNT, rows: susp.slice(0, 200).map(row) });
+let exAm = 0, exAmS = 0; for (const r of records.values()) if (excludeReason(r) === 'dodatok') { exAm++; exAmS += amount(r); }
 writeJson(path.join(API, 'daily.json'), daily);
 
 let pendingDays = 0;
@@ -275,7 +284,7 @@ const failedDays = Object.keys(state.days).filter((d) => state.days[d].failed).s
 const lastDay = Object.keys(state.days).filter((d) => state.days[d].n != null && d !== 'fixture').sort().pop() || null;
 const meta = {
   generated: new Date().toISOString(), lastDay, windowDays: WINDOW, windowStart, placeCap: CAP,
-  contracts: records.size, active: all.length, pendingDays, failedDays, places: places.size, changesThisRun: newCount, geocoding: geoStats,
+  contracts: records.size, active: all.length, pendingDays, failedDays, rules: { maxAmount: MAX_AMOUNT, suspicious: susp.length, suspiciousSum: round(susp.reduce((a, r) => a + amount(r), 0)), amendments: exAm, amendmentsSum: round(exAmS) }, places: places.size, changesThisRun: newCount, geocoding: geoStats,
   periods: { '7': d7, '30': d30, all: windowStart }, everFrom: firstMonth ? firstMonth + '-01' : null, plan: 'free',
   sources: [
     { name: 'Centrálny register zmlúv, Úrad vlády SR', url: 'https://www.crz.gov.sk/', license: 'CC BY 4.0' },
@@ -290,7 +299,7 @@ fs.rmSync(REC_DIR, { recursive: true, force: true }); fs.mkdirSync(REC_DIR, { re
 const byMonth = {};
 for (const r of records.values()) (byMonth[r.zverejnene.slice(0, 7)] ||= []).push(JSON.stringify(r));
 for (const [m, lines] of Object.entries(byMonth)) fs.writeFileSync(path.join(REC_DIR, m + '.ndjson.gz'), zlib.gzipSync(lines.join('\n')));
-writeJson(path.join(STATE, 'monthly.json'), monthly);
+writeJson(path.join(STATE, 'monthly.json'), { ...monthly, _v: CALC_VERSION });
 fs.rmSync(path.join(STATE, 'changes.ndjson.gz'), { force: true });
 // zmeny pre import do D1 – len keď je zapnutá platená verzia (inak by pri dosťahovaní roka vznikol obrovský súbor)
 if (process.env.WRITE_CHANGES) fs.writeFileSync(path.join(STATE, 'changes.ndjson.gz'), zlib.gzipSync([...changed.values()].map((r) => JSON.stringify(r)).join('\n')));
