@@ -18,6 +18,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # poistka: opätovné povolenie naplánovaných behov (pozri job keepalive)
 
 concurrency:
   group: crz-update
@@ -84,3 +85,14 @@ jobs:
           rm -rf data/.git
           CONTACT_EMAIL="${{ vars.CONTACT_EMAIL }}" bash scripts/build-site.sh
           npx -y wrangler@4 deploy
+
+  # Poistka: GitHub vo verejných repozitároch po 60 dňoch bez zmien vypne naplánované behy.
+  # Opätovné povolenie workflowu pri každom behu odpočet vynuluje, takže sa aktualizácie nezastavia.
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Udržať naplánované behy aktívne
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update.yml/enable" && echo "Naplánované behy sú povolené."
