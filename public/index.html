@@ -614,7 +614,7 @@ function renderAbout() {
   <ul>${m.sources.map((s) => `<li><a href="${s.url}" target="_blank">${esc(s.name)}</a>, licencia ${esc(s.license)}</li>`).join('')}<li>Mapa © <a href="https://openfreemap.org" target="_blank">OpenFreeMap</a> a prispievatelia OpenStreetMap</li>
   <li>Zdrojový kód: <a href="https://github.com/jandokan/vydavky-statu" target="_blank">GitHub</a></li></ul>
   <h3>Prevádzkovateľ a kontakt</h3>
-  <p>Mapa verejných zmlúv, Janko Koterba${CONTACT ? `, <a href="mailto:${CONTACT}">${CONTACT}</a>` : ''}. ${CONTACT ? 'Našiel si chybu alebo je subjekt zle zaradený? Napíš, opravíme to.' : ''}</p>
+  <p>Mapa verejných zmlúv, Ján Koterba${CONTACT ? `, <a href="mailto:${CONTACT}">${CONTACT}</a>` : ''}. ${CONTACT ? 'Našiel si chybu alebo je subjekt zle zaradený? Napíš, opravíme to.' : ''}</p>
   <a class="btn sec" href="/ochrana-udajov.html">Ochrana osobných údajov</a>
   <p class="lead">Aktualizované ${new Date(m.generated).toLocaleString('sk-SK')}</p></div>`;
 }
