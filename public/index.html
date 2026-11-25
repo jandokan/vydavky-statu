@@ -296,7 +296,7 @@ const api = (f) => fetch('/api/' + f + (V ? '?v=' + encodeURIComponent(V) : ''))
 const SK = [[16.83, 47.73], [22.57, 49.62]];
 const map = new maplibregl.Map({
   container: 'map', style: 'https://tiles.openfreemap.org/styles/positron', bounds: SK, fitBoundsOptions: { padding: pad() },
-  minZoom: 5, maxBounds: [[14.5, 46.6], [24.8, 50.6]], attributionControl: { compact: true }, dragRotate: false, pitchWithRotate: false,
+  minZoom: 5, maxZoom: 17, maxBounds: [[14.5, 46.6], [24.8, 50.6]], attributionControl: { compact: true }, dragRotate: false, pitchWithRotate: false,
   customAttribution: 'Dáta: <a href="https://www.crz.gov.sk/">CRZ</a> (CC BY 4.0), <a href="https://www.geonames.org/">GeoNames</a>',
 });
 map.touchZoomRotate.disableRotation();
@@ -324,22 +324,68 @@ function drawMap() {
   const radius = ['interpolate', ['linear'], ['sqrt', ['get', 'v']], 0, 6, Math.sqrt(mx) * 0.12, 15, Math.sqrt(mx), 46];
   if (map.getSource('pl')) {
     map.getSource('pl').setData(gj);
-    for (const id of ['cl', 'pt']) { map.setPaintProperty(id, 'circle-color', col); map.setPaintProperty(id, 'circle-radius', radius); }
+    for (const id of ['cl', 'pt', 'sp']) { map.setPaintProperty(id, 'circle-color', col); map.setPaintProperty(id, 'circle-radius', radius); }
+    unspider();
     map.setLayoutProperty('lbl', 'text-field', label);
     return;
   }
-  map.addSource('pl', { type: 'geojson', data: gj, cluster: true, clusterRadius: 42, clusterMaxZoom: 10, clusterProperties: { v: ['+', ['get', 'v']] } });
+  map.addSource('pl', { type: 'geojson', data: gj, cluster: true, clusterRadius: 42, clusterMaxZoom: 17, clusterProperties: { v: ['+', ['get', 'v']] } });
   map.addSource('sel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   map.addLayer({ id: 'sel', type: 'circle', source: 'sel', paint: { 'circle-radius': 22, 'circle-color': '#F5C518', 'circle-opacity': .45, 'circle-stroke-color': '#F5C518', 'circle-stroke-width': 3 } });
   map.addLayer({ id: 'cl', type: 'circle', source: 'pl', filter: ['has', 'point_count'], paint: { 'circle-color': col, 'circle-opacity': .6, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'pt', type: 'circle', source: 'pl', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': col, 'circle-opacity': .78, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'lbl', type: 'symbol', source: 'pl', layout: { 'text-field': label, 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': false }, paint: { 'text-color': '#16213E', 'text-halo-color': '#fff', 'text-halo-width': 1.6 } });
+  // rozbalené miesta s rovnakou polohou („pavúk“): čiary do stredu + krúžky s názvom
+  map.addSource('spl', { type: 'geojson', data: EMPTY });
+  map.addSource('spp', { type: 'geojson', data: EMPTY });
+  map.addLayer({ id: 'spl', type: 'line', source: 'spl', paint: { 'line-color': '#16213E', 'line-width': 1.6, 'line-opacity': .55 } });
+  map.addLayer({ id: 'spc', type: 'circle', source: 'spl', filter: ['==', ['get', 'c'], 1], paint: { 'circle-radius': 6, 'circle-color': '#16213E', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+  map.addLayer({ id: 'sp', type: 'circle', source: 'spp', paint: { 'circle-color': col, 'circle-opacity': .9, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
+  map.addLayer({ id: 'spt', type: 'symbol', source: 'spp', layout: { 'text-field': ['get', 't'], 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': true, 'text-anchor': 'top', 'text-offset': [0, 1.1] }, paint: { 'text-color': '#16213E', 'text-halo-color': '#fff', 'text-halo-width': 1.8 } });
   map.on('click', 'cl', async (e) => {
-    const f = e.features[0]; const z = await map.getSource('pl').getClusterExpansionZoom(f.properties.cluster_id);
-    map.easeTo({ center: f.geometry.coordinates, zoom: z + 0.4, padding: pad() });
+    if (map.queryRenderedFeatures(e.point, { layers: ['sp'] }).length) return; // klik patrí rozbalenému krúžku
+    const f = e.features[0], src = map.getSource('pl'), id = f.properties.cluster_id;
+    const leaves = await src.getClusterLeaves(id, 60, 0);
+    const c0 = leaves[0].geometry.coordinates;
+    const same = leaves.every((l) => Math.abs(l.geometry.coordinates[0] - c0[0]) < 2e-4 && Math.abs(l.geometry.coordinates[1] - c0[1]) < 2e-4);
+    const z = await src.getClusterExpansionZoom(id);
+    if (same || z > 16) spider(f.geometry.coordinates, leaves, id);
+    else map.easeTo({ center: f.geometry.coordinates, zoom: z + 0.4, padding: pad() });
   });
-  map.on('click', 'pt', (e) => openPlace(e.features[0].properties.key));
-  for (const id of ['cl', 'pt']) { map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer')); map.on('mouseleave', id, () => (map.getCanvas().style.cursor = '')); }
+  map.on('click', 'pt', (e) => { if (!map.queryRenderedFeatures(e.point, { layers: ['sp'] }).length) openPlace(e.features[0].properties.key); });
+  map.on('click', 'sp', (e) => openPlace(e.features[0].properties.key));
+  map.on('click', (e) => { if (spiderOn && !map.queryRenderedFeatures(e.point, { layers: ['sp', 'cl'] }).length) unspider(); });
+  map.on('zoomstart', () => unspider());
+  for (const id of ['cl', 'pt', 'sp']) { map.on('mouseenter', id, () => (map.getCanvas().style.cursor = 'pointer')); map.on('mouseleave', id, () => (map.getCanvas().style.cursor = '')); }
+}
+const EMPTY = { type: 'FeatureCollection', features: [] };
+let spiderOn = false;
+// Rozloží miesta z jedného bodu do kruhu okolo neho (v pixeloch, takže to vyzerá rovnako pri každom priblížení).
+function spider(center, leaves, clusterId) {
+  const n = leaves.length, c = map.project(center);
+  const R = Math.max(70, Math.min(160, 22 * n)); // polomer v px
+  leaves.sort((a, b) => b.properties.v - a.properties.v);
+  const pts = [], lines = [{ type: 'Feature', geometry: { type: 'Point', coordinates: center }, properties: { c: 1 } }];
+  leaves.forEach((l, i) => {
+    const ang = -Math.PI / 2 + (2 * Math.PI * i) / n;
+    const ll = map.unproject([c.x + R * Math.cos(ang), c.y + R * Math.sin(ang)]);
+    const pos = [ll.lng, ll.lat], p = l.properties;
+    const val = S.met === 's' ? short(p.v).replace(' €', '') : intf.format(p.v);
+    pts.push({ type: 'Feature', geometry: { type: 'Point', coordinates: pos }, properties: { key: p.key, v: p.v, t: `${p.name}\n${val}` } });
+    lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: [center, pos] }, properties: {} });
+  });
+  map.getSource('spp').setData({ type: 'FeatureCollection', features: pts });
+  map.getSource('spl').setData({ type: 'FeatureCollection', features: lines });
+  // pôvodný spojený krúžok skryjeme, kým je rozbalený
+  map.setFilter('cl', ['all', ['has', 'point_count'], ['!=', ['get', 'cluster_id'], clusterId]]);
+  map.setFilter('lbl', ['!=', ['get', 'cluster_id'], clusterId]);
+  spiderOn = true;
+}
+function unspider() {
+  if (!spiderOn || !map.getSource('spp')) return;
+  map.getSource('spp').setData(EMPTY); map.getSource('spl').setData(EMPTY);
+  map.setFilter('cl', ['has', 'point_count']); map.setFilter('lbl', null);
+  spiderOn = false;
 }
 function markSel(P) { if (map.getSource('sel')) map.getSource('sel').setData({ type: 'FeatureCollection', features: P ? [{ type: 'Feature', geometry: { type: 'Point', coordinates: [P.lon, P.lat] } }] : [] }); }
 
