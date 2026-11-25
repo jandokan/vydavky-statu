@@ -179,6 +179,9 @@ body.fs .no-fs{display:none}
   #panel{top:0;right:auto;width:var(--panel);height:auto!important;border-radius:0;box-shadow:1px 0 0 var(--line);padding-bottom:0;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;transition:transform .25s cubic-bezier(.2,.8,.2,1)}
   #body{flex:none;overflow:visible}
   #panel>*{flex-shrink:0}
+  /* na mobile vrch panela slúži na ťahanie (touch-action:none); na počítači ho treba vedieť posúvať prstom */
+  #panel,#panel .head,#panel .grab,#panel .brandrow{touch-action:pan-y}
+  #panel .chips,#panel .tabs{touch-action:pan-x pan-y}
   #panel .tabs{position:sticky;top:0;background:var(--card);z-index:2}
   #panelToggle{display:grid}
   body.panel-off #panel{transform:translateX(-100%)}
