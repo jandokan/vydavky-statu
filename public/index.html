@@ -51,13 +51,14 @@ a{color:var(--acc);text-underline-offset:3px}
 .fab:active,.chip:active,.role button:active{transform:scale(.97)}
 #mapBtns{position:fixed;z-index:8;right:10px;bottom:calc(var(--sh,var(--peek)) + 12px);display:flex;flex-direction:column;gap:8px;transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
 body.sheet-full #mapBtns{opacity:0;pointer-events:none}
+body.sheet-min .head .total,body.sheet-min .head .sub{visibility:hidden}
 .maplibregl-ctrl-bottom-right{right:66px!important}
 #mapBtns .fab{width:48px;height:48px;border-radius:14px}
 .maplibregl-ctrl-group{border-radius:14px!important;box-shadow:var(--shadow)!important;overflow:hidden}
 .maplibregl-ctrl-group button{width:48px!important;height:48px!important}
 
 /* ---------- panel (mobil: spodný panel) ---------- */
-#panel{position:fixed;z-index:7;left:0;right:0;bottom:0;height:var(--sh,var(--peek));background:var(--card);border-radius:24px 24px 0 0;box-shadow:0 -12px 40px -16px rgba(22,33,62,.4);display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);transition:height .28s cubic-bezier(.2,.8,.2,1);touch-action:none}
+#panel{position:fixed;z-index:7;left:0;right:0;bottom:0;height:var(--sh,var(--peek));background:var(--card);border-radius:24px 24px 0 0;box-shadow:0 -12px 40px -16px rgba(22,33,62,.4);display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom);transition:height .28s cubic-bezier(.2,.8,.2,1);touch-action:none}
 #panel.drag{transition:none}
 .grab{display:flex;justify-content:center;padding:10px 0 4px;cursor:grab}
 .grab i{width:44px;height:5px;border-radius:3px;background:var(--line)}
@@ -391,12 +392,14 @@ function markSel(P) { if (map.getSource('sel')) map.getSource('sel').setData({ t
 
 // ---------- spodný panel (mobil) ----------
 const panel = $('#panel');
-const snaps = () => { const h = innerHeight; return [344, Math.round(h * 0.6), h - 82]; };
+// polohy panela: 0 = len úchyt a názov miesta (veľká mapa), 1 = súhrn, 2 = polovica, 3 = celá obrazovka
+const snaps = () => { const h = innerHeight; return [86, 344, Math.round(h * 0.6), h - 82]; };
 let snap = 0;
 const root = document.documentElement;
 function setSnap(i) {
-  snap = Math.max(0, Math.min(2, i));
-  document.body.classList.toggle('sheet-full', snap === 2 && !desktop());
+  snap = Math.max(0, Math.min(3, i));
+  document.body.classList.toggle('sheet-full', snap === 3 && !desktop());
+  document.body.classList.toggle('sheet-min', snap === 0 && !desktop());
   if (!desktop()) root.style.setProperty('--sh', snaps()[snap] + 'px'); else root.style.removeProperty('--sh');
 }
 (function dragSheet() {
@@ -405,7 +408,7 @@ function setSnap(i) {
   const move = (e) => { if (!active) return; const dy = y0 - e.clientY; if (Math.abs(dy) > 4) moved = true; const s = snaps(); root.style.setProperty('--sh', Math.max(s[0] - 40, Math.min(s[2], h0 + dy)) + 'px'); };
   const end = (e) => {
     if (!active) return; active = false; panel.classList.remove('drag'); $('#mapBtns').style.transition = '';
-    if (!moved) { setSnap(snap === 0 ? 1 : snap === 1 ? 2 : 0); return; }
+    if (!moved) { setSnap(snap === 0 ? 1 : snap === 1 ? 2 : snap === 2 ? 3 : 1); return; }
     const h = panel.getBoundingClientRect().height, s = snaps(), v = y0 - e.clientY;
     let best = 0; s.forEach((x, i) => { if (Math.abs(x - h) < Math.abs(s[best] - h)) best = i; });
     if (Math.abs(v) > 60 && best === snap) best += v > 0 ? 1 : -1;
@@ -419,7 +422,7 @@ addEventListener('resize', () => setSnap(snap));
 
 // ---------- obsah panela ----------
 function setTab(t) { S.tab = t; S.shown = 40; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.t === t)); render(); $('#body').scrollTop = 0; }
-$('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { setTab(b.dataset.t); if (snap === 0) setSnap(1); } };
+$('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { setTab(b.dataset.t); if (snap <= 1) setSnap(2); } };
 
 function contractRow(f, r) {
   const o = Object.fromEntries(f.map((k, i) => [k, r[i]]));
@@ -626,7 +629,7 @@ function renderHead() {
 <span class="src">Zdroj: CRZ (CC BY 4.0, upravené) · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
 }
 $('#scope').addEventListener('click', (e) => { if (e.target.closest('#toSK')) resetScope(); });
-$('#tSub').addEventListener('click', (e) => { if (e.target.closest('#how')) { setTab('about'); if (snap < 2) setSnap(2); setTimeout(() => $('#ako')?.scrollIntoView({ block: 'start' }), 60); } });
+$('#tSub').addEventListener('click', (e) => { if (e.target.closest('#how')) { setTab('about'); if (snap < 3) setSnap(3); setTimeout(() => $('#ako')?.scrollIntoView({ block: 'start' }), 60); } });
 function render() {
   renderHead();
   $('#body').innerHTML = { list: renderList, ents: renderEnts, chart: renderChart, about: renderAbout }[S.tab]();
@@ -635,7 +638,7 @@ function render() {
 
 async function openPlace(key, filter = '') {
   if (S.tab === 'about') S.tab = 'list';
-  if (snap === 0) setSnap(1);
+  if (snap <= 1) setSnap(2);
   $('#body').innerHTML = '<p class="empty">Načítavam…</p>';
   try {
     S.place = await api('p/' + encodeURIComponent(key) + '.json');
@@ -692,7 +695,7 @@ q.addEventListener('input', async () => {
 res.addEventListener('click', (e) => { const b = e.target.closest('[data-ent]'); if (b) { const [role, i] = b.dataset.ent.split(':'); goEnt(role, +i); } });
 
 // ---------- štart ----------
-setSnap(0);
+setSnap(1);
 (async () => {
   try {
     S.meta = await api('meta.json'); V = S.meta.generated;
