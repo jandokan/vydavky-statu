@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<title>Výdavky štátu – mapa zmlúv z CRZ</title>
-<meta name="description" content="Interaktívna mapa zmlúv z Centrálneho registra zmlúv. Kto platí, kto dostáva a koľko.">
+<title>Mapa verejných zmlúv – zmluvy z Centrálneho registra zmlúv</title>
+<meta name="description" content="Mapa verejných zmlúv: interaktívna mapa zmlúv z Centrálneho registra zmlúv. Kto zmluvy uzatvára, s kým a na akú sumu.">
 <meta name="theme-color" content="#F3F5FA">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,7 +17,7 @@
   --paper:#F3F5FA; --card:#FFFFFF; --ink:#16213E; --mut:#5D6680; --line:#DDE3EF; --soft:#E9EDF5;
   --o:#2747E6; --o-soft:#E6EBFF; --d:#D21F66; --d-soft:#FCE4EE; --gold:#F5C518;
   --acc:var(--o); --acc-soft:var(--o-soft);
-  --panel:440px; --peek:292px;
+  --panel:440px; --peek:344px;
   --f:'Bricolage Grotesque',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   --shadow:0 10px 30px -12px rgba(22,33,62,.35);
 }
@@ -76,7 +76,9 @@ body.sheet-full #mapBtns{opacity:0;pointer-events:none}
 .total .cnt{font-size:15px;color:var(--mut);text-align:right;line-height:1.2}
 .total .cnt b{display:block;color:var(--ink);font-size:20px;font-weight:700}
 .sub{color:var(--mut);font-size:14px;margin-top:4px}
-.chips{display:flex;gap:6px;overflow-x:auto;padding:10px 18px 2px;scrollbar-width:none;touch-action:pan-x}
+.sub .src{display:block;font-size:12.5px;margin-top:2px}
+.how{border:0;background:none;padding:0;color:var(--acc);font:inherit;font-weight:650;text-decoration:underline;text-underline-offset:3px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:10px 18px 6px;scrollbar-width:none;touch-action:pan-x}
 .chips::-webkit-scrollbar{display:none}
 .chip{border:1.5px solid var(--line);background:var(--card);border-radius:999px;min-height:40px;padding:0 15px;font-weight:600;font-size:15px;white-space:nowrap;color:var(--ink)}
 .chip.on{background:var(--ink);border-color:var(--ink);color:#fff}
@@ -197,9 +199,9 @@ body.fs .no-fs{display:none}
 <div id="map" aria-label="Mapa zmlúv"></div>
 
 <div id="top">
-  <a class="brand no-fs" href="/" aria-label="Výdavky štátu">
+  <a class="brand no-fs" href="/" aria-label="Mapa verejných zmlúv">
     <svg viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="11" fill="#16213E"/><circle cx="14" cy="15" r="6.5" fill="#2747E6"/><circle cx="22.5" cy="21.5" r="8" fill="#D21F66" opacity=".9"/><circle cx="14" cy="15" r="2.2" fill="#F5C518"/></svg>
-    <span><b>Výdavky štátu</b><small>mapa zmlúv z CRZ</small></span>
+    <span><b>Mapa verejných zmlúv</b><small>z Centrálneho registra zmlúv</small></span>
   </a>
   <div class="role" id="role" role="group" aria-label="Zobraziť">
     <button data-v="o" class="on"><i></i>Kto platí</button>
@@ -218,9 +220,9 @@ body.fs .no-fs{display:none}
 
 <section id="panel" aria-label="Prehľad">
   <div class="brandrow">
-    <a class="brand" href="/" aria-label="Výdavky štátu">
+    <a class="brand" href="/" aria-label="Mapa verejných zmlúv">
       <svg viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="11" fill="#16213E"/><circle cx="14" cy="15" r="6.5" fill="#2747E6"/><circle cx="22.5" cy="21.5" r="8" fill="#D21F66" opacity=".9"/><circle cx="14" cy="15" r="2.2" fill="#F5C518"/></svg>
-      <span><b>Výdavky štátu</b><small>mapa zmlúv z CRZ</small></span>
+      <span><b>Mapa verejných zmlúv</b><small>z Centrálneho registra zmlúv</small></span>
     </a>
     <button class="fab" id="btnSearch2" aria-label="Hľadať"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg></button>
   </div>
@@ -297,7 +299,7 @@ map.touchZoomRotate.disableRotation();
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
 function pad() {
   if (document.body.classList.contains('fs')) return { top: 80, bottom: 30, left: 20, right: 20 };
-  return desktop() ? { top: 90, bottom: 40, left: 40, right: 80 } : { top: 80, bottom: (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--peek')) || 292) + 20, left: 16, right: 16 };
+  return desktop() ? { top: 90, bottom: 40, left: 40, right: 80 } : { top: 80, bottom: (parseInt(getComputedStyle(document.documentElement).getPropertyValue('--peek')) || 344) + 20, left: 16, right: 16 };
 }
 const home = () => map.fitBounds(SK, { padding: pad(), duration: 700 });
 
@@ -339,7 +341,7 @@ function markSel(P) { if (map.getSource('sel')) map.getSource('sel').setData({ t
 
 // ---------- spodný panel (mobil) ----------
 const panel = $('#panel');
-const snaps = () => { const h = innerHeight; return [292, Math.round(h * 0.55), h - 82]; };
+const snaps = () => { const h = innerHeight; return [344, Math.round(h * 0.6), h - 82]; };
 let snap = 0;
 const root = document.documentElement;
 function setSnap(i) {
@@ -435,7 +437,7 @@ function renderList() {
   if (S.sort === 'date') list = [...list].sort((a, b) => (b[I.Z] || '').localeCompare(a[I.Z] || ''));
   return `<div class="seg" id="sort"><button data-v="amt" class="${S.sort !== 'date' ? 'on' : ''}">Najväčšie</button><button data-v="date" class="${S.sort === 'date' ? 'on' : ''}">Najnovšie</button></div>
     ${filterChip()}${S.per === 'ever' ? `<p class="lead">Zoznam zmlúv je za ${winName()}, súčet hore je od začiatku.</p>` : ''}${capNote()}
-    ${list.slice(0, S.shown).map((r) => contractRow(f, r)).join('') || `<p class="empty">${S.role === 'o' ? 'Odtiaľto nikto neplatil' : 'Sem nikto nedostal peniaze'} ${perName()}.</p>`}${more(list.length)}`;
+    ${list.slice(0, S.shown).map((r) => contractRow(f, r)).join('') || `<p class="empty">${S.role === 'o' ? 'Objednávatelia odtiaľto' : 'Dodávatelia odtiaľto'} nemajú ${perName()} žiadne zmluvy.</p>`}${more(list.length)}`;
 }
 
 $('#body').addEventListener('click', (e) => {
@@ -456,15 +458,15 @@ function renderEnts() {
     const own = group(S.role === 'o' ? I.O : I.D), other = group(S.role === 'o' ? I.D : I.O);
     const block = (title, arr) => { const mx = arr[0]?.[2] || 1; return `<h3 style="margin:16px 0 2px;font-size:19px">${title}</h3>` + (arr.slice(0, 30).map((x) => rankRow(`data-pf="${esc(x[0])}"`, x[0], `${intf.format(x[1])} ${plural(x[1], 'zmluva', 'zmluvy', 'zmlúv')}`, x[2], mx)).join('') || '<p class="empty">Žiadne zmluvy v tomto období.</p>'); };
     return `<p class="lead">${S.per === 'ever' ? 'Za ' + winName() : perName()[0].toUpperCase() + perName().slice(1)}. Ťukni na subjekt a uvidíš jeho zmluvy.</p>${filterChip()}`
-      + block(S.role === 'o' ? `Kto platí v mieste ${esc(S.place.name)}` : `Kto dostáva v mieste ${esc(S.place.name)}`, own)
-      + block(S.role === 'o' ? 'Komu tieto peniaze idú' : 'Od koho tieto peniaze sú', other);
+      + block(S.role === 'o' ? `Objednávatelia so sídlom v mieste ${esc(S.place.name)}` : `Dodávatelia so sídlom v mieste ${esc(S.place.name)}`, own)
+      + block(S.role === 'o' ? 'Ich dodávatelia' : 'Ich objednávatelia', other);
   }
   const ev = S.per === 'ever';
   if (ev && !S.namesEver) { loadEver().then(render, () => { S.namesEver = S.names || { o: [], d: [] }; render(); }); return '<p class="empty">Načítavam…</p>'; }
   if (!ev && !S.names) { loadNames().then(render); return '<p class="empty">Načítavam…</p>'; }
   const src = ev ? S.namesEver : S.names, pre = ev ? 'e' : '';
   const list = src[S.role].slice(0, S.shown), mx = list[0]?.[4] || 1;
-  return `<p class="lead">${S.role === 'o' ? 'Kto na Slovensku zaplatil' : 'Kto na Slovensku dostal'} najviac ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa jeho miesto.</p>`
+  return `<p class="lead">${S.role === 'o' ? 'Objednávatelia' : 'Dodávatelia'} s najvyššou hodnotou zmlúv na Slovensku ${ev ? perName() : 'za ' + winName()}. Ťukni a ukáže sa jeho miesto.</p>`
     + list.map((e, i) => rankRow(`data-ent="${pre}${S.role}:${i}"`, e[0], `${e[1] ? 'IČO ' + esc(e[1]) + ', ' : ''}${intf.format(e[3])} ${plural(e[3], 'zmluva', 'zmluvy', 'zmlúv')}`, e[4], mx)).join('')
     + more(Math.min(src[S.role].length, 1000));
 }
@@ -493,11 +495,11 @@ function renderChart() {
   if (S.place) {
     const f = S.place.fields, I = fieldIdx(f);
     for (const r of placeList()) { if (skipOf(I, r)) continue; const z = (r[I.Z] || '').slice(0, monthly ? 7 : 10); if (!z) continue; const x = by.get(z) || { n: 0, s: 0 }; x.n++; x.s += amtOf(I, r); by.set(z, x); }
-    note = `${S.role === 'o' ? 'Platby subjektov z miesta' : 'Peniaze pre subjekty z miesta'} ${esc(S.place.name)} podľa dátumu zverejnenia zmluvy${S.per === 'ever' ? ' (za ' + winName() + ')' : ''}.`;
+    note = `Hodnota zmlúv ${S.role === 'o' ? 'objednávateľov' : 'dodávateľov'} so sídlom v mieste ${esc(S.place.name)} podľa dátumu zverejnenia${S.per === 'ever' ? ' (za ' + winName() + ')' : ''}.`;
   } else {
     if (!S.daily) { api('daily.json').then((d) => { S.daily = d; render(); }); return '<p class="empty">Načítavam…</p>'; }
     for (const [d, v] of Object.entries(S.daily)) { if (d < from) continue; const k = monthly ? d.slice(0, 7) : d; const x = by.get(k) || { n: 0, s: 0 }; x.n += v.n; x.s += v.s; by.set(k, x); }
-    note = `Všetky zmluvy na Slovensku podľa dátumu zverejnenia, bez ohľadu na rolu.${monthly ? '' : ' Sivé sú víkendy.'}`;
+    note = `Hodnota všetkých zmlúv na Slovensku podľa dátumu zverejnenia.${monthly ? '' : ' Sivé sú víkendy.'}`;
   }
   let keys = monthly ? [...new Set(dayKeys(from).map((d) => d.slice(0, 7)))] : dayKeys(from);
   const vals = keys.map((k) => (by.get(k) || { n: 0, s: 0 })[S.met]);
@@ -512,17 +514,15 @@ function renderAbout() {
   <p>Zmluvy, ktoré štát, samosprávy a ich organizácie zverejnili v <a href="https://www.crz.gov.sk/" target="_blank">Centrálnom registri zmlúv</a>. Každú noc sa sem automaticky stiahnu nové.</p>
   <div class="kpis"><div><small>Posledné dáta z</small><b>${fdate(m.lastDay) || '–'}</b></div><div><small>Zmlúv</small><b class="num">${intf.format(m.contracts)}</b></div></div>
   ${m.pendingDays ? `<div class="note">Niektoré dni ešte chýbajú (${m.pendingDays}). Register ich teraz nevydal, doplnia sa automaticky.</div>` : ''}
-  <h3>Porovnanie s rozpočtom</h3>
-  <div class="kpis"><div><small>Štátny rozpočet 2026 (výdavky)</small><b class="num">33,5 mld €</b></div><div><small>Celá verejná správa 2026</small><b class="num">67,9 mld €</b></div></div>
-  <p class="lead">Súčty zmlúv sa s rozpočtom nedajú porovnať presne. Veľká časť rozpočtu (dôchodky, platy, sociálne dávky) sa zmluvami neplatí a naopak zmluvy obsahujú aj úvery, eurofondy či prevody medzi štátnymi organizáciami.</p>
-  <h3>Ako čítať čísla</h3>
-  <ul><li>Suma je cena dohodnutá v zmluve, nie skutočne vyplatené peniaze.</li>
+  <h3 id="ako">Ako počítame</h3>
+  <ul><li>Všetky sumy sú <b>hodnota zmlúv</b> tak, ako ju úrady zapísali do registra. Nie sú to skutočne vyplatené peniaze ani výdavky z rozpočtu.</li>
   <li>Krúžok na mape je sídlo zmluvnej strany, nie miesto, kde sa práca robí. Preto je najviac peňazí v Bratislave.</li>
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
   <li><b>Dodatky</b> sa do súm nerátajú. Väčšinou opakujú celú sumu pôvodnej zmluvy, takže by sa tie isté peniaze zrátali viackrát. V zoznamoch ich vidíš so štítkom „dodatok“.${m.rules ? ` Za obdobie ich je ${intf.format(m.rules.amendments)}.` : ''}</li>
   <li><b>Podozrivé sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
-  <li>„Kto platí“ je zmluvná strana 1, „kto dostáva“ strana 2, presne ako v registri.</li></ul>
+  <li>„Kto platí“ je objednávateľ (zmluvná strana 1), „kto dostáva“ dodávateľ (strana 2), presne ako v registri.</li>
+  <li>Súčty preto nie je správne porovnávať s rozpočtom. Zmluvami sa neplatia dôchodky, platy ani dávky a naopak medzi zmluvami sú aj úvery, eurofondy, nájmy či zmluvy medzi štátnymi organizáciami. V registri sú navyše aj obce, mestá a štátne firmy.</li></ul>
   <p class="lead">Detail zmlúv držíme za ${winName()} (od ${fdate(m.windowStart)}). Súčty „Od začiatku“ sa ukladajú natrvalo${m.everFrom ? ' od ' + fdate(m.everFrom) : ''} a stále pribúdajú. Na mapu sa podarilo umiestniť ${tot ? Math.round((g.psc + g.obec + g.psc3) / tot * 100) : 0} % adries. Fyzické osoby väčšinou adresu nemajú.</p>
   ${m.rules && m.rules.suspicious ? `<h3>Podozrivé sumy (${m.rules.suspicious})</h3><p class="lead">Tieto zmluvy majú v registri uvedenú nereálnu sumu, spolu ${short(m.rules.suspiciousSum)}. Do súčtov ich nerátame. Ťukni pre detail.</p><div id="susp"><p class="empty">Načítavam…</p></div>` : ''}
   <h3>Zdroje</h3>
@@ -543,11 +543,11 @@ function renderHead() {
     ? `<span class="lbl here">${PIN}<span>${esc(S.place.name)}<small>${esc(where(S.place))}</small></span></span><button class="back" id="toSK">${SKICON}Celé Slovensko</button>`
     : `<span class="lbl">${SKICON}<span>Celé Slovensko<small>ťukni na krúžok a vyber miesto</small></span></span>`;
   $('#tSum').textContent = short(sum); $('#tCnt').textContent = intf.format(cnt);
-  $('#tSub').textContent = S.place
-    ? `${S.role === 'o' ? 'zaplatili úrady a organizácie so sídlom tu' : 'dostali firmy a organizácie so sídlom tu'} ${perName()}`
-    : `${S.role === 'o' ? 'zaplatili úrady a organizácie' : 'dostali dodávatelia'} ${perName()} · ${intf.format(places)} miest`;
+  $('#tSub').innerHTML = `hodnota zmlúv ${perName()}, ${S.place ? (S.role === 'o' ? 'kde objednávateľ sídli tu' : 'kde dodávateľ sídli tu') : (S.role === 'o' ? 'podľa sídla objednávateľa' : 'podľa sídla dodávateľa') + ' · ' + intf.format(places) + ' miest'}
+    <span class="src">Zdroj: CRZ, Úrad vlády SR · aktualizované ${new Date(S.meta.generated).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', hour: 'numeric', minute: '2-digit' })} · <button class="how" id="how">Ako počítame?</button></span>`;
 }
 $('#scope').addEventListener('click', (e) => { if (e.target.closest('#toSK')) resetScope(); });
+$('#tSub').addEventListener('click', (e) => { if (e.target.closest('#how')) { setTab('about'); if (snap < 2) setSnap(2); setTimeout(() => $('#ako')?.scrollIntoView({ block: 'start' }), 60); } });
 function render() {
   renderHead();
   $('#body').innerHTML = { list: renderList, ents: renderEnts, chart: renderChart, about: renderAbout }[S.tab]();

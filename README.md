@@ -1,4 +1,4 @@
-# Výdavky štátu – mapa zmlúv z CRZ
+# Mapa verejných zmlúv
 
 Interaktívna mapa zmlúv z [Centrálneho registra zmlúv](https://www.crz.gov.sk/): kto platí, kto dostáva, koľko a kde.
 Dáta sa každú noc automaticky sťahujú z oficiálneho denného exportu CRZ.
