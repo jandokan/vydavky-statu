@@ -30,6 +30,14 @@ export function loadGeoNames(txt) {
     const lat = g.reduce((a, p) => a + p.lat, 0) / g.length, lon = g.reduce((a, p) => a + p.lon, 0) / g.length;
     for (const p of g) { p.lat = Math.round(lat * 1e4) / 1e4; p.lon = Math.round(lon * 1e4) / 1e4; }
   }
+  // rovnaký názov na (takmer) rovnakom mieste, len s inak zapísaným okresom → jedno miesto
+  const seen = new Map();
+  for (const p of places) {
+    const k = `${p.n}|${Math.round(p.lat * 50)}|${Math.round(p.lon * 50)}`; // ~2 km mriežka
+    const first = seen.get(k);
+    if (!first) seen.set(k, p);
+    else if (first.key !== p.key) { p.key = first.key; p.lat = first.lat; p.lon = first.lon; p.okres = first.okres || p.okres; p.kraj = first.kraj || p.kraj; }
+  }
   const byPsc = new Map(), byPrefix = new Map(), byName = new Map();
   for (const p of places) {
     (byPsc.get(p.psc) || byPsc.set(p.psc, []).get(p.psc)).push(p);
