@@ -57,6 +57,13 @@ body.sheet-min .head .total,body.sheet-min .head .sub{visibility:hidden}
 .maplibregl-ctrl-group{border-radius:14px!important;box-shadow:var(--shadow)!important;overflow:hidden}
 .maplibregl-ctrl-group button{width:48px!important;height:48px!important}
 
+/* ---------- štítok testovacej verzie ---------- */
+#beta{position:fixed;z-index:9;border:0;margin:0;background:var(--gold);color:var(--ink);font:800 12px/1 var(--f);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;box-shadow:0 4px 14px -4px rgba(22,33,62,.45);
+  background-image:repeating-linear-gradient(-45deg,transparent 0 10px,rgba(22,33,62,.09) 10px 20px)}
+/* mobil: nálepka nalepená na hornom okraji spodného panela */
+#beta{left:14px;bottom:calc(var(--sh,var(--peek)) - 9px);padding:7px 12px;border-radius:7px;transform:rotate(-4deg);transition:bottom .28s cubic-bezier(.2,.8,.2,1)}
+body.fs #beta{bottom:calc(env(safe-area-inset-bottom) + 14px)}
+
 /* ---------- panel (mobil: spodný panel) ---------- */
 #panel{position:fixed;z-index:7;left:0;right:0;bottom:0;height:var(--sh,var(--peek));background:var(--card);border-radius:24px 24px 0 0;box-shadow:0 -12px 40px -16px rgba(22,33,62,.4);display:flex;flex-direction:column;overflow:hidden;padding-bottom:env(safe-area-inset-bottom);transition:height .28s cubic-bezier(.2,.8,.2,1);touch-action:none}
 #panel.drag{transition:none}
@@ -184,6 +191,9 @@ body.fs .no-fs{display:none}
   #panel .chips,#panel .tabs{touch-action:pan-x pan-y}
   #panel .tabs{position:sticky;top:0;background:var(--card);z-index:2}
   #panelToggle{display:grid}
+  #beta{left:auto;bottom:auto;top:44px;right:-48px;width:210px;padding:9px 0;border-radius:0;transform:rotate(45deg);text-align:center;font-size:12.5px}
+  body.fs #beta{bottom:auto}
+  #top{right:120px}
   body.panel-off #panel{transform:translateX(-100%)}
   body.panel-off #map{left:0}
   body.panel-off #top{left:64px}
@@ -233,6 +243,7 @@ body.fs .no-fs{display:none}
   <button class="fab" id="btnHome" aria-label="Celé Slovensko" title="Celé Slovensko"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg></button>
 </div>
 
+<button id="beta" title="Čo znamená testovacia verzia?">Testovacia verzia</button>
 <button id="panelToggle" aria-label="Skryť panel" title="Skryť / zobraziť panel"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
 <section id="panel" aria-label="Prehľad">
   <div class="brandrow">
@@ -420,10 +431,10 @@ function setSnap(i) {
 }
 (function dragSheet() {
   let y0 = 0, h0 = 0, moved = false, active = false;
-  const start = (e) => { if (desktop()) return; document.querySelectorAll('#mapBtns').forEach((b) => (b.style.transition = 'none')); active = true; moved = false; y0 = e.clientY; h0 = panel.getBoundingClientRect().height; panel.classList.add('drag'); };
+  const start = (e) => { if (desktop()) return; document.querySelectorAll('#mapBtns,#beta').forEach((b) => (b.style.transition = 'none')); active = true; moved = false; y0 = e.clientY; h0 = panel.getBoundingClientRect().height; panel.classList.add('drag'); };
   const move = (e) => { if (!active) return; const dy = y0 - e.clientY; if (Math.abs(dy) > 4) moved = true; const s = snaps(); root.style.setProperty('--sh', Math.max(s[0] - 40, Math.min(s[2], h0 + dy)) + 'px'); };
   const end = (e) => {
-    if (!active) return; active = false; panel.classList.remove('drag'); $('#mapBtns').style.transition = '';
+    if (!active) return; active = false; panel.classList.remove('drag'); $('#mapBtns').style.transition = ''; $('#beta').style.transition = '';
     if (!moved) { setSnap(snap === 0 ? 1 : snap === 1 ? 2 : snap === 2 ? 3 : 1); return; }
     const h = panel.getBoundingClientRect().height, s = snaps(), v = y0 - e.clientY;
     let best = 0; s.forEach((x, i) => { if (Math.abs(x - h) < Math.abs(s[best] - h)) best = i; });
@@ -585,6 +596,7 @@ function renderChart() {
 function renderAbout() {
   const m = S.meta, g = m.geocoding, tot = g.psc + g.obec + g.psc3 + g.none;
   return `<div class="about">
+  <div class="note" id="test"><b>Testovacia verzia.</b> Aplikácia je nová a ešte sa ladí. Výpočty a zaradenie zmlúv sa môžu meniť a niektoré údaje môžu byť nepresné. Rozhodujúce sú vždy údaje v Centrálnom registri zmlúv.${CONTACT ? ` Ak nájdeš chybu, <a href="mailto:${CONTACT}?subject=${encodeURIComponent('Mapa verejných zmlúv – pripomienka')}">napíš mi</a>.` : ''}</div>
   <h3>Čo tu vidíš</h3>
   <p>Zmluvy, ktoré štát, samosprávy a ich organizácie zverejnili v <a href="https://www.crz.gov.sk/" target="_blank">Centrálnom registri zmlúv</a>. Každú noc sa sem automaticky stiahnu nové.</p>
   <div class="kpis"><div><small>Posledné dáta z</small><b>${fdate(m.lastDay) || '–'}</b></div><div><small>Zmlúv</small><b class="num">${intf.format(m.contracts)}</b></div></div>
@@ -683,6 +695,7 @@ $('#priv').onclick = () => {
   $('#priv').classList.toggle('on', S.priv); $('#priv').setAttribute('aria-pressed', S.priv);
   drawMap(); render();
 };
+$('#beta').onclick = () => { if (document.body.classList.contains('fs')) $('#btnFs').click(); setTab('about'); if (!desktop() && snap < 3) setSnap(3); if (document.body.classList.contains('panel-off')) $('#panelToggle').click(); setTimeout(() => $('#test')?.scrollIntoView({ block: 'start' }), 60); };
 $('#panelToggle').onclick = () => {
   const off = document.body.classList.toggle('panel-off');
   $('#panelToggle').setAttribute('aria-label', off ? 'Zobraziť panel' : 'Skryť panel');
