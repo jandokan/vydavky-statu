@@ -637,7 +637,7 @@ function renderAbout() {
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
   <li>Objednávateľ je zmluvná strana 1, dodávateľ strana 2, presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
   <li><b>Len súkromný sektor</b> vynechá zmluvy, kde sú obe strany verejné inštitúcie (ministerstvá, obce, kraje, školy, nemocnice, štátne a mestské firmy). Ostanú zmluvy s firmami, neziskovkami a ľuďmi. Za verejnú inštitúciu považujeme toho, kto sám pravidelne zverejňuje zmluvy, alebo koho tak určuje názov. Zaradenie je automatické a pri niektorých subjektoch môže byť nepresné.</li>
-  <li><b>Návštevnosť:</b> číslo „práve tu“ ukazuje otvorené stránky za posledné asi 3 minúty, „za deň“ a „za mesiac“ počet návštev za posledných 24 hodín a 30 dní. Počítame anonymne: bez cookies, bez ukladania IP adries a bez sledovania.</li>
+  <li><b>Návštevnosť:</b> číslo „práve tu“ ukazuje otvorené stránky za posledné asi 3 minúty, „za deň“ a „za mesiac“ počet návštev za posledných 24 hodín a 30 dní. Návšteva je otvorenie stránky; obnovenie stránky sa nepočíta znova, návrat po viac ako 30 minútach áno. Počítame anonymne: bez cookies, bez ukladania IP adries a bez sledovania.</li>
   <li><b>Ochrana osobných údajov:</b> mená a adresy fyzických osôb (ľudí bez IČO) nezobrazujeme. Nahrádzame ich textom „Fyzická osoba“ a do rebríčkov ani vyhľadávania ich nedávame. Podnikatelia s IČO sa zobrazujú, lebo sú verejne v registroch.</li>
   <li>Súčet za celé Slovensko je rovnaký pre obe strany. Na mape sa dá ukázať len strana so známou adresou na Slovensku. Fyzické osoby register zverejňuje bez adresy a zahraničné firmy na mapu Slovenska nepatria.</li>
   <li><b>Súčty nie je správne porovnávať so štátnym rozpočtom.</b> Hodnota zmlúv za rok môže byť vyššia ako rozpočet, lebo:
@@ -725,7 +725,9 @@ $('#priv').onclick = () => {
 /* ---------- počítadlo návštevnosti (worker/live.js) ---------- */
 (() => {
   const el = $('#live');
-  const ss = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch { return null; } };
+  // náhradná pamäť, keby prehliadač sessionStorage nepovolil (inak by sa každé ozvanie rátalo ako nová návšteva)
+  const mem = {};
+  const ss = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k) ?? mem[k] ?? null; sessionStorage.setItem(k, v); } catch { if (v === undefined) return mem[k] ?? null; } mem[k] = v; };
   let sid = ss('mvz-s');
   if (!sid) { sid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); ss('mvz-s', sid); }
   const pl = (n, one, few, many) => (n === 1 ? one : n >= 2 && n <= 4 ? few : many);
@@ -733,12 +735,14 @@ $('#priv').onclick = () => {
   async function ping() {
     clearTimeout(timer);
     last = Date.now();
-    const isNew = !ss('mvz-n');
+    // nová návšteva = prvé otvorenie v karte alebo návrat po viac ako 30 min nečinnosti (ako v bežných štatistikách)
+    const lastSeen = +ss('mvz-t') || 0;
+    const isNew = Date.now() - lastSeen > 30 * 60 * 1000;
     try {
       const r = await fetch(`/live?s=${sid}${isNew ? '&n=1' : ''}`, { cache: 'no-store' });
       if (!r.ok) throw 0;
       const x = await r.json();
-      if (isNew) ss('mvz-n', '1');
+      ss('mvz-t', String(Date.now()));
       every = x.every;
       el.innerHTML = `<span class="now"><span class="dot"></span><span><b>${intf.format(x.now)}</b> práve tu</span></span>`
         + `<span><b>${intf.format(x.day)}</b> ${pl(x.day, 'návšteva', 'návštevy', 'návštev')} za deň</span>`
