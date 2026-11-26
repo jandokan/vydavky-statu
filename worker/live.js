@@ -38,14 +38,15 @@ async function hash(s) {
 export class Counter {
   constructor(state) {
     this.state = state;
-    this.sessions = new Map(); // id karty -> čas posledného ozvania (len v pamäti)
-    this.ips = new Map();      // hash IP -> { n, t } (len v pamäti)
-    this.data = null;          // { hours: { [hodina]: počet }, day, req }
-    this.dirty = false;
+    this.ips = new Map();      // hash IP -> { n, t } (len v pamäti, môže sa stratiť)
+    this.data = null;          // { hours: { [hodina]: počet }, sess: { [id karty]: čas }, day, req, since }
   }
 
   async load() {
+    // Objekt Cloudflare po pár sekundách nečinnosti uspí a pamäť zmaže, preto stav vždy čítame
+    // a hneď po zmene zapisujeme do úložiska (1 zápis na požiadavku, limit je 100 000 zápisov/deň).
     if (!this.data) this.data = (await this.state.storage.get('data')) || { hours: {}, day: '', req: 0, since: new Date().toISOString().slice(0, 10) };
+    if (!this.data.sess) this.data.sess = {};
   }
 
   async fetch(request) {
@@ -59,8 +60,8 @@ export class Counter {
     d.req++;
 
     const sid = (u.searchParams.get('s') || '').replace(/[^a-z0-9]/gi, '').slice(0, 24);
-    if (sid) this.sessions.set(sid, now);
-    for (const [k, t] of this.sessions) if (now - t > ACTIVE_MS) this.sessions.delete(k);
+    if (sid) d.sess[sid] = now;
+    for (const [k, t] of Object.entries(d.sess)) if (now - t > ACTIVE_MS) delete d.sess[k];
 
     if (u.searchParams.get('n') === '1') {
       const ip = request.headers.get('x-ip') || '';
@@ -74,8 +75,6 @@ export class Counter {
       }
       if (this.ips.size > 5000) for (const [k, v] of this.ips) if (now - v.t > HOUR) this.ips.delete(k);
     }
-    this.dirty = true;
-    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(now + 60 * 1000);
 
     const hNow = Math.floor(now / HOUR);
     let dayN = 0, monthN = 0;
@@ -86,14 +85,9 @@ export class Counter {
       else delete d.hours[k];
     }
 
-    const every = d.req > HARD ? 0 : d.req > SOFT ? 600 : 120;
-    return Response.json({ now: Math.max(this.sessions.size, sid ? 1 : 0), day: dayN, month: monthN, since: d.since, every });
-  }
+    await this.state.storage.put('data', d);
 
-  async alarm() {
-    if (this.dirty && this.data) {
-      this.dirty = false;
-      await this.state.storage.put('data', this.data);
-    }
+    const every = d.req > HARD ? 0 : d.req > SOFT ? 600 : 120;
+    return Response.json({ now: Math.max(Object.keys(d.sess).length, sid ? 1 : 0), day: dayN, month: monthN, since: d.since, every });
   }
 }
