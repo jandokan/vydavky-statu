@@ -83,6 +83,15 @@ body.fs #beta{bottom:calc(env(safe-area-inset-bottom) + 14px)}
 .total .cnt b{display:block;color:var(--ink);font-size:20px;font-weight:700}
 .sub{color:var(--mut);font-size:14px;margin-top:4px}
 .sub .src{display:block;font-size:12.5px;margin-top:2px}
+.live[hidden]{display:none}
+.live{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;margin-top:8px;font-size:12.5px;color:var(--mut)}
+.live b{color:var(--ink);font-weight:700}
+.live .now{display:inline-flex;align-items:center;gap:6px;background:rgba(31,157,85,.1);color:#17703d;border-radius:999px;padding:3px 10px 3px 8px;font-weight:600}
+.live .now b{color:#17703d}
+.live .dot{width:8px;height:8px;border-radius:50%;background:#1f9d55;box-shadow:0 0 0 0 rgba(31,157,85,.5);animation:pulse 2.4s ease-out infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(31,157,85,.45)}70%{box-shadow:0 0 0 7px rgba(31,157,85,0)}100%{box-shadow:0 0 0 0 rgba(31,157,85,0)}}
+@media (prefers-reduced-motion:reduce){.live .dot{animation:none}}
+body.sheet-min .head .live{visibility:hidden}
 .how{border:0;background:none;padding:0;color:var(--acc);font:inherit;font-weight:650;text-decoration:underline;text-underline-offset:3px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:10px 18px 6px;scrollbar-width:none;touch-action:pan-x}
 .chips::-webkit-scrollbar{display:none}
@@ -258,6 +267,7 @@ body.fs .no-fs{display:none}
     <div class="scope" id="scope"></div>
     <div class="total"><div class="big num" id="tSum">–</div><div class="cnt"><b class="num" id="tCnt">–</b>zmlúv</div></div>
     <div class="sub" id="tSub">Načítavam dáta…</div>
+    <div class="live" id="live" hidden title="Návštevnosť tejto stránky. Počítame anonymne, bez cookies."></div>
   </div>
   <div class="chips" id="per" role="group" aria-label="Obdobie">
     <button class="chip" data-v="7">7 dní</button><button class="chip on" data-v="30">30 dní</button><button class="chip" data-v="all" id="perAll">1 rok</button><button class="chip" data-v="ever">Od začiatku</button>
@@ -611,6 +621,7 @@ function renderAbout() {
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
   <li>Objednávateľ je zmluvná strana 1, dodávateľ strana 2, presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
   <li><b>Len súkromný sektor</b> vynechá zmluvy, kde sú obe strany verejné inštitúcie (ministerstvá, obce, kraje, školy, nemocnice, štátne a mestské firmy). Ostanú zmluvy s firmami, neziskovkami a ľuďmi. Za verejnú inštitúciu považujeme toho, kto sám pravidelne zverejňuje zmluvy, alebo koho tak určuje názov. Zaradenie je automatické a pri niektorých subjektoch môže byť nepresné.</li>
+  <li><b>Návštevnosť:</b> číslo „práve tu“ ukazuje otvorené stránky za posledné asi 3 minúty, „za deň“ a „za mesiac“ počet návštev za posledných 24 hodín a 30 dní. Počítame anonymne: bez cookies, bez ukladania IP adries a bez sledovania.</li>
   <li><b>Ochrana osobných údajov:</b> mená a adresy fyzických osôb (ľudí bez IČO) nezobrazujeme. Nahrádzame ich textom „Fyzická osoba“ a do rebríčkov ani vyhľadávania ich nedávame. Podnikatelia s IČO sa zobrazujú, lebo sú verejne v registroch.</li>
   <li>Súčet za celé Slovensko je rovnaký pre obe strany. Na mape sa dá ukázať len strana so známou adresou na Slovensku. Fyzické osoby register zverejňuje bez adresy a zahraničné firmy na mapu Slovenska nepatria.</li>
   <li><b>Súčty nie je správne porovnávať so štátnym rozpočtom.</b> Hodnota zmlúv za rok môže byť vyššia ako rozpočet, lebo:
@@ -695,6 +706,38 @@ $('#priv').onclick = () => {
   $('#priv').classList.toggle('on', S.priv); $('#priv').setAttribute('aria-pressed', S.priv);
   drawMap(); render();
 };
+/* ---------- počítadlo návštevnosti (worker/live.js) ---------- */
+(() => {
+  const el = $('#live');
+  const ss = (k, v) => { try { if (v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, v); } catch { return null; } };
+  let sid = ss('mvz-s');
+  if (!sid) { sid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); ss('mvz-s', sid); }
+  const pl = (n, one, few, many) => (n === 1 ? one : n >= 2 && n <= 4 ? few : many);
+  let timer = 0, last = 0, every = 120;
+  async function ping() {
+    clearTimeout(timer);
+    last = Date.now();
+    const isNew = !ss('mvz-n');
+    try {
+      const r = await fetch(`/live?s=${sid}${isNew ? '&n=1' : ''}`, { cache: 'no-store' });
+      if (!r.ok) throw 0;
+      const x = await r.json();
+      if (isNew) ss('mvz-n', '1');
+      every = x.every;
+      el.innerHTML = `<span class="now"><span class="dot"></span><span><b>${intf.format(x.now)}</b> práve tu</span></span>`
+        + `<span><b>${intf.format(x.day)}</b> ${pl(x.day, 'návšteva', 'návštevy', 'návštev')} za deň</span>`
+        + `<span><b>${intf.format(x.month)}</b> za mesiac</span>`;
+      el.hidden = false;
+    } catch { if (!el.innerHTML) el.hidden = true; }
+    if (every > 0 && !document.hidden) timer = setTimeout(ping, every * 1000);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearTimeout(timer);
+    else if (every > 0 && Date.now() - last > 60000) ping();
+    else if (every > 0) timer = setTimeout(ping, every * 1000);
+  });
+  ping();
+})();
 $('#beta').onclick = () => { if (document.body.classList.contains('fs')) $('#btnFs').click(); setTab('about'); if (!desktop() && snap < 3) setSnap(3); if (document.body.classList.contains('panel-off')) $('#panelToggle').click(); setTimeout(() => $('#test')?.scrollIntoView({ block: 'start' }), 60); };
 $('#panelToggle').onclick = () => {
   const off = document.body.classList.toggle('panel-off');
