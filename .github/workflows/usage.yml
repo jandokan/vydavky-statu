@@ -1,0 +1,66 @@
+name: Stráž limitov Cloudflare
+
+# Každú hodinu skontroluje spotrebu CELÉHO účtu Cloudflare (všetky Workery: dlažba, donáška,
+# počítadlo návštevnosti …) za posledných 24 hodín. Ak spotreba prekročí 50 % denného limitu
+# bezplatného plánu, beh zlyhá – GitHub vtedy pošle e-mail. Nič nemení, len číta štatistiky.
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write   # poistka proti vypnutiu naplánovaných behov po 60 dňoch
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Skontrolovať spotrebu
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          ACCOUNT: c056bb00714059f0803d5261920db923
+          LIMIT: '100000'      # spustení Workerov denne (bezplatný plán)
+          DO_LIMIT: '100000'   # požiadaviek na Durable Objects denne
+          WARN: '0.5'
+        run: |
+          node - <<'EOF'
+          const { CF_TOKEN, ACCOUNT, LIMIT, DO_LIMIT, WARN } = process.env;
+          const e = new Date(), s = new Date(e - 24 * 3600e3);
+          const query = `query($a:String!,$s:Time!,$e:Time!){viewer{accounts(filter:{accountTag:$a}){
+            w: workersInvocationsAdaptive(limit:1000, filter:{datetime_geq:$s, datetime_leq:$e}){ sum{requests errors} dimensions{scriptName} }
+            d: durableObjectsInvocationsAdaptiveGroups(limit:1000, filter:{datetime_geq:$s, datetime_leq:$e}){ sum{requests} }
+          }}}`;
+          const r = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+            method: 'POST',
+            headers: { authorization: `Bearer ${CF_TOKEN}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ query, variables: { a: ACCOUNT, s: s.toISOString(), e: e.toISOString() } }),
+          });
+          const j = await r.json();
+          if (!r.ok || j.errors?.length) {
+            console.log('::warning::Štatistiky sa nepodarilo načítať (token možno nemá právo Account Analytics: Read):', JSON.stringify(j.errors || r.status));
+            process.exit(0);
+          }
+          const acc = j.data.viewer.accounts[0];
+          const by = {};
+          for (const x of acc.w) by[x.dimensions.scriptName] = (by[x.dimensions.scriptName] || 0) + x.sum.requests;
+          const total = Object.values(by).reduce((a, b) => a + b, 0);
+          const dob = acc.d.reduce((a, x) => a + x.sum.requests, 0);
+          console.log('Spustenia Workerov za 24 h podľa aplikácie:');
+          for (const [k, v] of Object.entries(by).sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(24)} ${v}`);
+          console.log(`Spolu: ${total} z ${LIMIT} (${(100 * total / LIMIT).toFixed(1)} %)`);
+          console.log(`Durable Objects: ${dob} z ${DO_LIMIT} (${(100 * dob / DO_LIMIT).toFixed(1)} %)`);
+          const bad = total > LIMIT * WARN || dob > DO_LIMIT * WARN;
+          if (bad) {
+            console.log(`::error::Spotreba prekročila ${WARN * 100} % denného limitu Cloudflare. Skontroluj, ktorá aplikácia ju spôsobuje.`);
+            process.exit(1);
+          }
+          EOF
+
+      - name: Udržať naplánované behy aktívne
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/usage.yml/enable" >/dev/null && echo ok
