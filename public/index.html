@@ -118,6 +118,11 @@ body.sheet-min .head .live{visibility:hidden}
 .tag{font-size:12.5px;font-weight:600;padding:3px 9px;border-radius:8px;background:var(--soft);color:var(--ink)}
 .tag.red{background:#FFE1E1;color:#9B1C1C}
 .tag.acc{background:var(--acc-soft);color:var(--acc)}
+.tag.twin{display:inline-flex;align-items:center;gap:5px;background:#FFF1CC;color:#6B4A00}
+.tag.twin svg{width:13px;height:13px;flex-shrink:0}
+.twinbox{display:flex;gap:10px;align-items:flex-start;background:#FFF8E6;border:1px solid #F3DDA0;border-radius:14px;padding:11px 13px;margin:2px 0 12px;font-size:14px;line-height:1.45;color:#4A3700}
+.twinbox svg{width:20px;height:20px;flex-shrink:0;margin-top:1px;color:#B07A00}
+.twinbox a{color:var(--acc);font-weight:650;white-space:nowrap}
 .row.dead .amt{text-decoration:line-through;color:var(--mut)}
 .det{display:none;margin-top:12px;background:var(--paper);border-radius:14px;padding:6px 14px 12px}
 .row.open .det{display:block}
@@ -463,6 +468,7 @@ function setTab(t) { S.tab = t; S.shown = 40; document.querySelectorAll('#tabs b
   if (desktop()) { const t = $('#tabs').offsetTop; if (panel.scrollTop > t) panel.scrollTop = t; } }
 $('#tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) { setTab(b.dataset.t); if (snap <= 1) setSnap(2); } };
 
+const TWIN = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="2.5" y="5.5" width="10" height="12" rx="2.2"/><path d="M7.5 5.5V4.7A2.2 2.2 0 0 1 9.7 2.5h5.6a2.2 2.2 0 0 1 2.2 2.2v7.6a2.2 2.2 0 0 1-2.2 2.2h-2.8"/></svg>';
 function contractRow(f, r) {
   const o = Object.fromEntries(f.map((k, i) => [k, r[i]]));
   const amt = o.suma_spolu > 0 ? o.suma_spolu : o.suma;
@@ -471,8 +477,17 @@ function contractRow(f, r) {
   const why = o.nezapocitane !== undefined ? o.nezapocitane : dead ? 'zrušená' : null;
   const whyTag = why === 'dodatok' ? '<span class="tag">dodatok · nezapočítava sa</span>'
     : why === 'pravdepodobne chybná suma' || why === 'podozrivá suma' ? '<span class="tag red">pravdepodobne chybná suma · nezapočítava sa</span>'
-    : why === 'duplicita' ? '<span class="tag">zverejnená aj druhou stranou · nezapočítava sa</span>'
+    : why === 'duplicita' ? `<span class="tag twin">${TWIN}duplicita · nezapočítava sa</span>`
     : why ? `<span class="tag red">${STAV[o.stav] || why}</span>` : '';
+  const dv = o.dvojica; // [id, číslo, pravidlo c/p, 1 = duplicita | 0 = započítaný originál]
+  const twinTag = dv && !dv[3] && !why ? `<span class="tag twin">${TWIN}v registri 2×</span>` : '';
+  const twinBox = !dv ? '' : `<div class="twinbox">${TWIN}<div>${dv[3]
+    ? (dv[2] === 'c'
+      ? 'Tá istá zmluva je v registri ešte raz – zverejnila ju aj druhá strana pod rovnakým číslom.'
+      : `Pravdepodobne ide o tú istú zmluvu ako č. <b>${esc(dv[1] || '?')}</b>: rovnaké zmluvné strany, suma do centa aj dátum podpisu, líši sa len číslo. Zvyčajne ju zverejnila aj druhá strana pod svojím číslom.`)
+      + ' Do súčtov ju rátame len raz.'
+    : `${dv[2] === 'c' ? 'Tá istá zmluva' : 'Pravdepodobne tá istá zmluva'} je v registri aj pod číslom <b>${esc(dv[1] || '?')}</b> (zverejnila ju aj druhá strana). Do súčtov rátame len túto.`}
+    <a href="https://www.crz.gov.sk/zmluva/${esc(dv[0])}/" target="_blank" rel="noopener">Otvoriť druhý záznam</a></div></div>`;
   const rows = f.filter((k) => LABEL[k] && o[k] != null && o[k] !== '').map((k) => {
     let v = o[k], html = null;
     if (k === 'suma' || k === 'suma_spolu') v = eur2.format(v);
@@ -486,8 +501,8 @@ function contractRow(f, r) {
   return `<div class="row${why ? ' dead' : ''}" tabindex="0" role="button" aria-expanded="false">
     <div class="l1"><div class="t">${esc(o.predmet || o.cislo || 'Zmluva')}</div><div class="amt">${eur.format(amt || 0)}</div></div>
     <div class="who"><b>${esc(o.objednavatel || '?')}</b> → <b>${esc(o.dodavatel || '?')}</b></div>
-    <div class="meta">${fdate(o.zverejnene)}${whyTag}${o.typ === 2 ? '<span class="tag">informácia</span>' : ''}${o.prilohy?.length ? `<span class="tag">${o.prilohy.length} ${plural(o.prilohy.length, 'príloha', 'prílohy', 'príloh')}</span>` : ''}</div>
-    <div class="det"><dl>${rows}</dl>${files ? `<div class="files">${files}</div>` : ''}
+    <div class="meta">${fdate(o.zverejnene)}${whyTag}${twinTag}${o.typ === 2 ? '<span class="tag">informácia</span>' : ''}${o.prilohy?.length ? `<span class="tag">${o.prilohy.length} ${plural(o.prilohy.length, 'príloha', 'prílohy', 'príloh')}</span>` : ''}</div>
+    <div class="det">${twinBox}<dl>${rows}</dl>${files ? `<div class="files">${files}</div>` : ''}
       <a class="btn" href="https://www.crz.gov.sk/zmluva/${o.id}/" target="_blank" rel="noopener">Otvoriť v registri CRZ</a>
       ${CONTACT ? `<a class="report" href="mailto:${CONTACT}?subject=${encodeURIComponent('Chyba pri zmluve ' + o.id)}&body=${encodeURIComponent('Zmluva: https://www.crz.gov.sk/zmluva/' + o.id + '/\n\nČo je zle:\n')}">Nahlásiť chybu pri tejto zmluve</a>` : ''}</div>
   </div>`;
@@ -618,7 +633,7 @@ function renderAbout() {
   <li>Zrušené a stiahnuté zmluvy sa do súm nerátajú.</li>
   <li><b>Dodatky</b> sa do súm nerátajú. Väčšinou opakujú celú sumu pôvodnej zmluvy, takže by sa tie isté peniaze zrátali viackrát. V zoznamoch ich vidíš so štítkom „dodatok“.${m.rules ? ` Za obdobie ich je ${intf.format(m.rules.amendments)}.` : ''}</li>
   <li><b>Pravdepodobne chybné sumy</b> nad ${m.rules ? short(m.rules.maxAmount) : '5 mld €'} za jednu zmluvu sa nerátajú. Takmer vždy ide o chybu pri zadávaní do registra alebo o nereálny strop rámcovej zmluvy.</li>
-  <li><b>Duplicity:</b> keď sú obe strany verejné inštitúcie, zmluvu zverejní každá zvlášť. Ak sa zhoduje číslo zmluvy, suma aj obe IČO, rátame ju len raz.${m.rules && m.rules.duplicates ? ` Takých zmlúv je ${intf.format(m.rules.duplicates)}.` : ''}</li>
+  <li><b>Duplicity:</b> tú istú zmluvu často zverejnia obe strany, každá pod svojím číslom. Za duplicitu považujeme zmluvu, ktorá má s inou zmluvou rovnaké číslo, sumu a obe IČO, alebo rovnaké obe IČO, sumu do centa, dátum podpisu a podobný názov, no číslo v inom tvare (teda ju zverejnil niekto iný). Rátame ju len raz: prvú zverejnenú započítame, ďalšie ukazujeme so štítkom „duplicita“ a s odkazom na druhý záznam. Zmluvy toho istého zverejňovateľa s číslami v rovnakom tvare (napr. 6/2026 a 7/2026) za duplicity nepovažujeme, aj keď majú rovnakú sumu.${m.rules && m.rules.duplicates ? ` Za obdobie je takých zmlúv ${intf.format(m.rules.duplicates)} v hodnote ${short(m.rules.duplicatesSum)}.` : ''}</li>
   <li>Rámcové zmluvy sa rátajú svojím stropom, skutočné čerpanie býva nižšie.</li>
   <li>Objednávateľ je zmluvná strana 1, dodávateľ strana 2, presne ako v registri. Strany zapisuje inštitúcia, ktorá zmluvu zverejňuje, a väčšinou uvedie seba ako stranu 1. Pri dotáciách, ktoré dostáva, pri nájmoch alebo predaji majetku preto smer peňazí v registri nemusí sedieť.</li>
   <li><b>Len súkromný sektor</b> vynechá zmluvy, kde sú obe strany verejné inštitúcie (ministerstvá, obce, kraje, školy, nemocnice, štátne a mestské firmy). Ostanú zmluvy s firmami, neziskovkami a ľuďmi. Za verejnú inštitúciu považujeme toho, kto sám pravidelne zverejňuje zmluvy, alebo koho tak určuje názov. Zaradenie je automatické a pri niektorých subjektoch môže byť nepresné.</li>

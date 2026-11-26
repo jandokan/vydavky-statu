@@ -65,7 +65,7 @@ for (const f of recFiles) {
   for (const line of zlib.gunzipSync(fs.readFileSync(f)).toString('utf8').split('\n')) if (line) { const r = anonymize(JSON.parse(line)); records.set(r.id, r); }
 }
 // trvalé mesačné súhrny; pri zmene pravidiel výpočtu (CALC_VERSION) sa prepočítajú odznova
-const CALC_VERSION = 5; // 5 = miesta spojené podľa obce (nie podľa PSČ)
+const CALC_VERSION = 6; // 6 = duplicity aj podľa strán, sumy a dátumu podpisu (5 = miesta podľa obce)
 const _cv = 4; // 3 = duplicity, 4 = súčty aj pre súkromný sektor, anonymizácia osôb
 let monthly = readJson(path.join(STATE, 'monthly.json'), {});
 if (monthly._v !== CALC_VERSION) { console.log('Nové pravidlá výpočtu → mesačné súhrny sa prepočítajú'); monthly = {}; }
@@ -151,22 +151,49 @@ console.log(`GeoNames: ${geo.places.length} miest`);
 for (const r of changed.values()) { r.miesto_o = geocode(r.objednavatel_adresa)?.key || null; r.miesto_d = geocode(r.dodavatel_adresa)?.key || null; }
 
 // ---------- duplicity ----------
-// Keď sú obe strany verejné inštitúcie, zmluvu zverejní každá zvlášť (často s prehodenými stranami).
-// Rovnaké číslo zmluvy + rovnaká suma + rovnaké dve IČO = tá istá zmluva → rátame len prvú zverejnenú.
+// Tú istú zmluvu často zverejnia obe strany (napr. ministerstvo aj príjemca dotácie), každá pod svojím číslom.
+// Rátame ju len raz: prvá zverejnená sa započíta, ďalšie sú „duplicita“ s odkazom na prvú (r._dup)
+// a prvá dostane odkaz na dvojičku (r._twin). Dve pravidlá:
+//  c = rovnaké číslo zmluvy + rovnaká suma + rovnaké dve IČO,
+//  p = rovnaké dve IČO + suma do centa + rovnaký dátum podpisu + podobný názov + iný tvar čísla
+//      (iný tvar čísla = zverejnil ju niekto iný; rovnaký tvar, napr. 6/2026 a 7/2026, sú samostatné zmluvy toho istého zverejňovateľa).
 {
   const nc = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const groups = new Map();
+  const pair = (r) => [r.objednavatel_ico, r.dodavatel_ico].sort().join('-');
+  const byPub = (x, y) => (x.zverejnene || '').localeCompare(y.zverejnene || '') || x.id - y.id;
+  const link = (dup, orig, k) => { dup._dup = { id: orig.id, cislo: orig.cislo, k }; if (!orig._twin) orig._twin = { id: dup.id, cislo: dup.cislo, k }; };
+  const base = [];
   for (const r of records.values()) {
-    delete r._dup;
-    if (!isActive(r) || isSuspicious(r) || isAmendment(r)) continue;
-    const a = Math.round(amount(r)), c = nc(r.cislo);
-    if (!a || !c || !r.objednavatel_ico || !r.dodavatel_ico) continue;
-    const k = `${c}|${a}|${[r.objednavatel_ico, r.dodavatel_ico].sort().join('-')}`;
+    delete r._dup; delete r._twin;
+    if (!isActive(r) || isSuspicious(r) || isAmendment(r) || !(amount(r) > 0) || !r.objednavatel_ico || !r.dodavatel_ico) continue;
+    base.push(r);
+  }
+  const groups = new Map();
+  for (const r of base) {
+    const c = nc(r.cislo); if (!c) continue;
+    const k = `${c}|${Math.round(amount(r))}|${pair(r)}`;
     (groups.get(k) || groups.set(k, []).get(k)).push(r);
   }
-  for (const g of groups.values()) if (g.length > 1) {
-    g.sort((x, y) => (x.zverejnene || '').localeCompare(y.zverejnene || '') || x.id - y.id);
-    for (const r of g.slice(1)) r._dup = true;
+  for (const g of groups.values()) if (g.length > 1) { g.sort(byPub); for (const r of g.slice(1)) link(r, g[0], 'c'); }
+
+  const STOP = new Set(['zmluva', 'zmluvy', 'zmluve', 'zmluvu', 'cislo', 'rok', 'roku', 'uzatvorena', 'uzavreta', 'medzi', 'zml', 'na', 'pre', 'za', 'zo', 'so', 'do', 'od']);
+  const toks = (t) => new Set(String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 1 && !STOP.has(w) && !/\d/.test(w)).map((w) => w.slice(0, 5)));
+  const sim = (a, b) => { const A = toks(a), B = toks(b); if (!A.size && !B.size) return 1; let i = 0; for (const x of A) if (B.has(x)) i++; return i / (A.size + B.size - i); };
+  const shape = (c) => String(c || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').replace(/\d+/g, '9').slice(0, 10);
+  const pg = new Map();
+  for (const r of base) {
+    if (r._dup || !r.datum_podpisu) continue;
+    const k = `${Math.round(amount(r) * 100)}|${pair(r)}|${r.datum_podpisu}`;
+    (pg.get(k) || pg.set(k, []).get(k)).push(r);
+  }
+  for (const g of pg.values()) if (g.length > 1) {
+    g.sort(byPub);
+    const kept = [], used = new Set();
+    for (const r of g) {
+      const m = kept.find((k) => !used.has(k) && shape(k.cislo) !== shape(r.cislo) && sim(k.predmet, r.predmet) >= 0.5);
+      if (m) { used.add(m); link(r, m, 'p'); } else kept.push(r);
+    }
   }
 }
 
@@ -186,7 +213,7 @@ fs.mkdirSync(path.join(API, 'p'), { recursive: true });
 const FIELDS = ['id', 'cislo', 'objednavatel', 'objednavatel_ico', 'objednavatel_adresa', 'dodavatel', 'dodavatel_ico', 'dodavatel_adresa',
   'predmet', 'popis', 'popis_predmetu', 'poznamka', 'poznamka_zmena', 'interna_poznamka', 'text_ucinnost', 'datum_podpisu', 'datum_ucinnosti',
   'platnost_do', 'zverejnene', 'zmenene', 'suma', 'suma_spolu', 'stav', 'typ', 'druh', 'zdroj', 'rezort', 'interne_id', 'referencia',
-  'obstaravanie', 'potvrdenie', 'potvrdenie_datum', 'zmeny', 'prilohy', 'miesto_o', 'miesto_d', 'nezapocitane', 'verejna'];
+  'obstaravanie', 'potvrdenie', 'potvrdenie_datum', 'zmeny', 'prilohy', 'miesto_o', 'miesto_d', 'nezapocitane', 'verejna', 'dvojica'];
 const row = (r) => FIELDS.map((f) => (f === 'prilohy' ? r.prilohy.map((p) => [p.nazov, p.subor, p.velkost]) : r[f] ?? null));
 
 const d7 = addDays(today, -7), d30 = addDays(today, -30);
@@ -208,6 +235,8 @@ function agg(obj, role, r, a) {
 for (const r of records.values()) {
   const a = counted(r);
   r.nezapocitane = excludeReason(r); // prečo sa nezapočítava (null = započítava sa)
+  // dvojica: [id, číslo, pravidlo c/p, 1 = toto je nezapočítaná duplicita | 0 = započítaný originál]
+  r.dvojica = r._dup ? [r._dup.id, r._dup.cislo, r._dup.k, 1] : r._twin ? [r._twin.id, r._twin.cislo, r._twin.k, 0] : null;
   for (const role of ['o', 'd']) {
     const addr = role === 'o' ? r.objednavatel_adresa : r.dodavatel_adresa;
     const g = addr ? geocode(addr) : null;
@@ -312,8 +341,8 @@ for (const r of all) { const z = r.zverejnene.slice(0, 10); const o = daily[z] |
 // pravdepodobne chybné sumy – zoznam na kontrolu (nezapočítavajú sa)
 const susp = [...records.values()].filter((r) => isActive(r) && isSuspicious(r)).sort((a, b) => amount(b) - amount(a));
 writeJson(path.join(API, 'suspicious.json'), { fields: FIELDS, limit: MAX_AMOUNT, rows: susp.slice(0, 200).map(row) });
-let exAm = 0, exAmS = 0, exDup = 0, exDupS = 0;
-for (const r of records.values()) { const w = excludeReason(r); if (w === 'dodatok') { exAm++; exAmS += amount(r); } else if (w === 'duplicita') { exDup++; exDupS += amount(r); } }
+let exAm = 0, exAmS = 0, exDup = 0, exDupS = 0, exDupP = 0, exDupPS = 0;
+for (const r of records.values()) { const w = excludeReason(r); if (w === 'dodatok') { exAm++; exAmS += amount(r); } else if (w === 'duplicita') { exDup++; exDupS += amount(r); if (r._dup.k === 'p') { exDupP++; exDupPS += amount(r); } } }
 // celkové súčty všetkých započítaných zmlúv (bez ohľadu na to, či sa dajú umiestniť na mapu)
 const totals = {};
 for (const sfx of SFX) {
@@ -329,7 +358,7 @@ const failedDays = Object.keys(state.days).filter((d) => state.days[d].failed).s
 const lastDay = Object.keys(state.days).filter((d) => state.days[d].n != null && d !== 'fixture').sort().pop() || null;
 const meta = {
   generated: new Date().toISOString(), lastDay, windowDays: WINDOW, windowStart, placeCap: CAP,
-  contracts: records.size, active: all.length, pendingDays, failedDays, totals, rules: { duplicates: exDup, duplicatesSum: round(exDupS), maxAmount: MAX_AMOUNT, suspicious: susp.length, suspiciousSum: round(susp.reduce((a, r) => a + amount(r), 0)), amendments: exAm, amendmentsSum: round(exAmS) }, places: places.size, changesThisRun: newCount, geocoding: geoStats,
+  contracts: records.size, active: all.length, pendingDays, failedDays, totals, rules: { duplicates: exDup, duplicatesSum: round(exDupS), duplicatesLikely: exDupP, duplicatesLikelySum: round(exDupPS), maxAmount: MAX_AMOUNT, suspicious: susp.length, suspiciousSum: round(susp.reduce((a, r) => a + amount(r), 0)), amendments: exAm, amendmentsSum: round(exAmS) }, places: places.size, changesThisRun: newCount, geocoding: geoStats,
   periods: { '7': d7, '30': d30, all: windowStart }, everFrom: dataStart, plan: 'free',
   sources: [
     { name: 'Centrálny register zmlúv, Úrad vlády SR', url: 'https://www.crz.gov.sk/', license: 'CC BY 4.0' },
