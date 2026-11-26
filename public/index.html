@@ -365,7 +365,9 @@ function drawMap() {
         ['>=', ['get', 'v'], 1e6], ['concat', ['to-string', ['/', ['round', ['/', ['get', 'v'], 1e5]], 10]], ' mil'],
         ['>=', ['get', 'v'], 1e3], ['concat', ['to-string', ['round', ['/', ['get', 'v'], 1e3]]], ' tis'], ['to-string', ['round', ['get', 'v']]]]
     : ['to-string', ['get', 'v']];
-  const radius = ['interpolate', ['linear'], ['sqrt', ['get', 'v']], 0, 6, Math.sqrt(mx) * 0.12, 15, Math.sqrt(mx), 46];
+  // veľkosť podľa hodnoty; pri priblížení sa malé krúžky zväčšia, aby sa na ne dalo pohodlne ťuknúť (min. ~40 px)
+  const rv = (a, b, c) => ['interpolate', ['linear'], ['sqrt', ['get', 'v']], 0, a, Math.sqrt(mx) * 0.12, b, Math.sqrt(mx), c];
+  const radius = ['interpolate', ['linear'], ['zoom'], 7, rv(6, 15, 46), 10, rv(16, 22, 48), 13, rv(20, 26, 52)];
   if (map.getSource('pl')) {
     map.getSource('pl').setData(gj);
     for (const id of ['cl', 'pt', 'sp']) { map.setPaintProperty(id, 'circle-color', col); map.setPaintProperty(id, 'circle-radius', radius); }
