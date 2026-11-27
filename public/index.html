@@ -380,14 +380,14 @@ function drawMap() {
   map.addLayer({ id: 'sel', type: 'circle', source: 'sel', paint: { 'circle-radius': 22, 'circle-color': '#F5C518', 'circle-opacity': .45, 'circle-stroke-color': '#F5C518', 'circle-stroke-width': 3 } });
   map.addLayer({ id: 'cl', type: 'circle', source: 'pl', filter: ['has', 'point_count'], paint: { 'circle-color': col, 'circle-opacity': .6, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'pt', type: 'circle', source: 'pl', filter: ['!', ['has', 'point_count']], paint: { 'circle-color': col, 'circle-opacity': .78, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
-  map.addLayer({ id: 'lbl', type: 'symbol', source: 'pl', layout: { 'text-field': label, 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': false }, paint: { 'text-color': '#16213E', 'text-halo-color': '#fff', 'text-halo-width': 1.6 } });
+  map.addLayer({ id: 'lbl', type: 'symbol', source: 'pl', layout: { 'text-field': label, 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': true, 'text-ignore-placement': true }, paint: { 'text-color': '#16213E', 'text-halo-color': '#fff', 'text-halo-width': 1.6 } });
   // rozbalené miesta s rovnakou polohou („pavúk“): čiary do stredu + krúžky s názvom
   map.addSource('spl', { type: 'geojson', data: EMPTY });
   map.addSource('spp', { type: 'geojson', data: EMPTY });
   map.addLayer({ id: 'spl', type: 'line', source: 'spl', paint: { 'line-color': '#16213E', 'line-width': 1.6, 'line-opacity': .55 } });
   map.addLayer({ id: 'spc', type: 'circle', source: 'spl', filter: ['==', ['get', 'c'], 1], paint: { 'circle-radius': 6, 'circle-color': '#16213E', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
   map.addLayer({ id: 'sp', type: 'circle', source: 'spp', paint: { 'circle-color': col, 'circle-opacity': .9, 'circle-radius': radius, 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } });
-  map.addLayer({ id: 'spt', type: 'symbol', source: 'spp', layout: { 'text-field': ['get', 't'], 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': true, 'text-anchor': 'top', 'text-offset': [0, 1.1] }, paint: { 'text-color': '#16213E', 'text-halo-color': '#fff', 'text-halo-width': 1.8 } });
+  map.addLayer({ id: 'spt', type: 'symbol', source: 'spp', layout: { 'text-field': ['get', 't'], 'text-size': 12, 'text-font': ['Noto Sans Bold'], 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-anchor': 'top', 'text-offset': [0, 1.1] }, paint: { 'text-color': '#16213E', 'text-halo-color': '#fff', 'text-halo-width': 1.8 } });
   map.on('click', 'cl', async (e) => {
     if (map.queryRenderedFeatures(e.point, { layers: ['sp'] }).length) return; // klik patrí rozbalenému krúžku
     const f = e.features[0], src = map.getSource('pl'), id = f.properties.cluster_id;
